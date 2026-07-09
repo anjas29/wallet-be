@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -25,13 +26,16 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
         ]);
 
+        // Reload so database-assigned defaults (e.g. role) are reflected in the response.
+        $user->refresh();
+
         $tokenName = $request->header('X-Device-Id', 'default');
         $token = $user->createToken($tokenName)->plainTextToken;
 
-        return response()->json([
-            'user' => $user,
+        return $this->success([
+            'user' => new UserResource($user),
             'token' => $token,
-        ], 201);
+        ], 'Registration successful.', 201);
     }
 
     public function login(Request $request)
@@ -44,38 +48,36 @@ class AuthController extends Controller
         $user = User::where('email', $data['email'])->first();
 
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            return response()->json([
-                'message' => 'Invalid credentials.',
-            ], 401);
+            return $this->error('Invalid credentials.', 401);
         }
 
         $tokenName = $request->header('X-Device-Id', 'default');
         $token = $user->createToken($tokenName)->plainTextToken;
 
-        return response()->json([
-            'user' => $user,
+        return $this->success([
+            'user' => new UserResource($user),
             'token' => $token,
-        ]);
+        ], 'Login successful.');
     }
 
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();
 
-        return response()->noContent();
+        return $this->success(null, 'Logged out.');
     }
 
     public function logoutAll(Request $request)
     {
         $request->user()->tokens()->delete();
 
-        return response()->noContent();
+        return $this->success(null, 'Logged out from all devices.');
     }
 
     public function profile(Request $request)
     {
-        return response()->json([
-            'user' => $request->user(),
+        return $this->success([
+            'user' => new UserResource($request->user()),
         ]);
     }
 }

@@ -15,11 +15,18 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        // Reference data — safe to run in every environment (idempotent).
+        $this->call([
+            CurrencySeeder::class,
+            CategorySeeder::class,
         ]);
+
+        // Local/testing convenience account only — never seeded in production.
+        if (app()->environment('local', 'testing')) {
+            User::factory()->create([
+                'name' => 'Test User',
+                'email' => 'test@example.com',
+            ]);
+        }
     }
 }

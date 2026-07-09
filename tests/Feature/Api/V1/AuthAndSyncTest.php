@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -21,19 +22,75 @@ class AuthAndSyncTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('user.email', 'ada@example.com');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('status_code', 201)
+            ->assertJsonPath('data.user.email', 'ada@example.com')
+            ->assertJsonPath('data.user.role', 'user');
 
-        $token = $response->json('token');
+        // Timestamps are serialized as ISO-8601.
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
+            $response->json('data.user.created_at'),
+        );
+
+        $token = $response->json('data.token');
+        $this->assertNotEmpty($token);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/auth/profile')
             ->assertStatus(200)
-            ->assertJsonPath('user.email', 'ada@example.com');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.user.email', 'ada@example.com');
+    }
+
+    public function test_invalid_credentials_return_error_envelope(): void
+    {
+        User::factory()->create(['email' => 'bob@example.com']);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'bob@example.com',
+            'password' => 'wrong-password',
+        ])
+            ->assertStatus(401)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('status_code', 401)
+            ->assertJsonPath('message', 'Invalid credentials.');
+    }
+
+    public function test_validation_failure_returns_error_envelope(): void
+    {
+        $this->postJson('/api/v1/auth/register', ['name' => ''])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('status_code', 422)
+            ->assertJsonStructure(['success', 'status_code', 'message', 'errors' => ['name', 'email', 'password']]);
+    }
+
+    public function test_unauthenticated_request_returns_error_envelope(): void
+    {
+        $this->getJson('/api/v1/accounts')
+            ->assertStatus(401)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('status_code', 401)
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_missing_record_returns_404_envelope(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/accounts/'.Str::ulid())
+            ->assertStatus(404)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('status_code', 404)
+            ->assertJsonPath('message', 'Resource not found.');
     }
 
     public function test_sync_push_can_create_account_and_transaction_for_authenticated_user(): void
     {
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $token = $user->createToken('test')->plainTextToken;
 
         $currencyId = (string) Str::ulid();
@@ -111,16 +168,30 @@ class AuthAndSyncTest extends TestCase
             ->postJson('/api/v1/sync/push', $payload);
 
         $response->assertStatus(200)
-            ->assertJsonPath('results.0.status', 'applied')
-            ->assertJsonPath('results.1.status', 'applied');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.results.0.status', 'applied')
+            ->assertJsonPath('data.results.1.status', 'applied')
+            ->assertJsonPath('data.results.0.record.initial_balance', '10.50');
 
         $this->assertDatabaseHas('accounts', ['id' => $accountId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('transactions', ['id' => $transactionId, 'user_id' => $user->id]);
+
+        // Read endpoint returns items under data with ISO-8601 timestamps.
+        $read = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/accounts')
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(1, 'data.items');
+
+        $this->assertMatchesRegularExpression(
+            '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
+            $read->json('data.items.0.created_at'),
+        );
     }
 
     public function test_read_endpoints_and_sync_support_transfers_and_liability_payments(): void
     {
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $token = $user->createToken('test')->plainTextToken;
 
         $currencyId = (string) Str::ulid();
@@ -190,12 +261,12 @@ class AuthAndSyncTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/currencies')
             ->assertStatus(200)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data.items');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/categories')
             ->assertStatus(200)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data.items');
 
         $payload = [
             'changes' => [
@@ -251,9 +322,10 @@ class AuthAndSyncTest extends TestCase
             ->postJson('/api/v1/sync/push', $payload);
 
         $response->assertStatus(200)
-            ->assertJsonPath('results.0.status', 'applied')
-            ->assertJsonPath('results.1.status', 'applied')
-            ->assertJsonPath('results.2.status', 'applied');
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.results.0.status', 'applied')
+            ->assertJsonPath('data.results.1.status', 'applied')
+            ->assertJsonPath('data.results.2.status', 'applied');
 
         $this->assertDatabaseHas('transfers', ['id' => $transferId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('liabilities', ['id' => $liabilityId, 'user_id' => $user->id]);
