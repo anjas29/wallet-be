@@ -1,0 +1,178 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Wallet API v1",
+    "version": "1.0.0",
+    "description": "Browsable API documentation for the wallet backend. Use the \"Try it out\" buttons to exercise the endpoints directly from the browser."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "tags": [
+    { "name": "auth", "description": "Authentication and session management" },
+    { "name": "wallet", "description": "Read and sync wallet resources" }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Register a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password", "password_confirmation"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "format": "password" },
+                  "password_confirmation": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "User created" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Log in a user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Authenticated" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Log out current device",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Logged out" } }
+      }
+    },
+    "/auth/logout-all": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Log out all devices",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Logged out from all devices" } }
+      }
+    },
+    "/auth/profile": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Fetch current user profile",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Profile data" } }
+      }
+    },
+    "/currencies": {
+      "get": {
+        "tags": ["wallet"],
+        "summary": "List currencies",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Currencies" } }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "tags": ["wallet"],
+        "summary": "List accounts",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Accounts" } }
+      }
+    },
+    "/transactions": {
+      "get": {
+        "tags": ["wallet"],
+        "summary": "List transactions",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Transactions" } }
+      }
+    },
+    "/transfers": {
+      "get": {
+        "tags": ["wallet"],
+        "summary": "List transfers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "since", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Transfers" } }
+      }
+    },
+    "/sync/push": {
+      "post": {
+        "tags": ["wallet"],
+        "summary": "Push a batch of wallet changes",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accounts": { "type": "array" },
+                  "transactions": { "type": "array" },
+                  "user_currencies": { "type": "array" },
+                  "transfers": { "type": "array" },
+                  "liabilities": { "type": "array" },
+                  "liability_payments": { "type": "array" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Sync accepted" } }
+      }
+    }
+  }
+}
