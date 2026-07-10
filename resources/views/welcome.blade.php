@@ -136,7 +136,7 @@
         Coming Soon
     </h1>
 </div>
-<div class="absolute bottom-8 left-0 w-full text-center"><span class="font-body-md text-on-surface opacity-70 tracking-[0.3em] text-[12px]">2025</span></div></main>
+<div class="absolute bottom-8 left-0 w-full text-center"><span class="font-body-md text-on-surface opacity-70 tracking-[0.3em] text-[12px]">July 2026</span></div></main>
 <!-- Footer Shell -->
 <script>
     // Smooth fade-in animation for the hero content
