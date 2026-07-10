@@ -19,6 +19,8 @@ class AccountResource extends JsonResource
             'name' => $this->name,
             'type' => $this->type,
             'initial_balance' => $this->initial_balance,
+            // Derived (attached by AccountService); absent on write/sync responses.
+            'balance' => $this->whenNotNull($this->balance),
             'is_default' => $this->is_default,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

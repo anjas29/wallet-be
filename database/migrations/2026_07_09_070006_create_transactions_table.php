@@ -17,10 +17,11 @@ return new class extends Migration
 
             // RESTRICT: protect global reference data — retire via soft delete instead.
             $table->foreignUlid('category_id')->constrained()->restrictOnDelete();
-            $table->foreignUlid('currency_id')->constrained()->restrictOnDelete();
 
-            // Snapshot at creation time — historical reports stay accurate even
-            // if the user later adjusts their user_currencies.exchange_rate.
+            // A transaction is always in its account's currency (via account.user_currency),
+            // so no per-transaction currency is stored. This snapshots the account-currency →
+            // anchor rate at creation time, so historical reports stay accurate even if the
+            // user later adjusts their user_currencies.exchange_rate.
             $table->decimal('exchange_rate_to_anchor', 20, 6)->default(1);
 
             // Denormalized from category for fast filtering without a join.

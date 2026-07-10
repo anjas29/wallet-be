@@ -153,7 +153,6 @@ class AuthAndSyncTest extends TestCase
                     'data' => [
                         'account_id' => $accountId,
                         'category_id' => $categoryId,
-                        'currency_id' => $currencyId,
                         'exchange_rate_to_anchor' => '1.000000',
                         'type' => 'expense',
                         'amount' => '4.25',
@@ -176,17 +175,25 @@ class AuthAndSyncTest extends TestCase
         $this->assertDatabaseHas('accounts', ['id' => $accountId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('transactions', ['id' => $transactionId, 'user_id' => $user->id]);
 
-        // Read endpoint returns items under data with ISO-8601 timestamps.
+        // Read endpoint returns items under data with ISO-8601 timestamps and a derived balance
+        // (initial 10.50 − 4.25 expense = 6.25), plus the transaction's derived currency_id.
         $read = $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/accounts')
             ->assertStatus(200)
             ->assertJsonPath('success', true)
-            ->assertJsonCount(1, 'data.items');
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.balance', '6.25');
 
         $this->assertMatchesRegularExpression(
             '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/',
             $read->json('data.items.0.created_at'),
         );
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.currency_id', $currencyId);
     }
 
     public function test_read_endpoints_and_sync_support_transfers_and_liability_payments(): void

@@ -17,7 +17,8 @@ class TransactionResource extends JsonResource
             'user_id' => $this->user_id,
             'account_id' => $this->account_id,
             'category_id' => $this->category_id,
-            'currency_id' => $this->currency_id,
+            // Derived: a transaction is always in its account's currency.
+            'currency_id' => $this->whenLoaded('account', fn () => $this->account?->userCurrency?->currency_id),
             'exchange_rate_to_anchor' => $this->exchange_rate_to_anchor,
             'type' => $this->type,
             'amount' => $this->amount,

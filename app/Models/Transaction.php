@@ -13,7 +13,6 @@ class Transaction extends BaseModel
         'user_id',
         'account_id',
         'category_id',
-        'currency_id',
         'exchange_rate_to_anchor',
         'type',
         'amount',
@@ -43,10 +42,5 @@ class Transaction extends BaseModel
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
-    }
-
-    public function currency(): BelongsTo
-    {
-        return $this->belongsTo(Currency::class);
     }
 }
