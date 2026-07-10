@@ -5,13 +5,20 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
+#[Group('Authentication', weight: 1)]
 class AuthController extends Controller
 {
+    /**
+     * Register
+     *
+     * Create a new user account and issue an access token.
+     */
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -38,6 +45,11 @@ class AuthController extends Controller
         ], 'Registration successful.', 201);
     }
 
+    /**
+     * Log in
+     *
+     * Authenticate with email and password and issue an access token.
+     */
     public function login(Request $request)
     {
         $data = $request->validate([
@@ -60,6 +72,11 @@ class AuthController extends Controller
         ], 'Login successful.');
     }
 
+    /**
+     * Log out
+     *
+     * Revoke the access token for the current device.
+     */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();
@@ -67,6 +84,11 @@ class AuthController extends Controller
         return $this->success(null, 'Logged out.');
     }
 
+    /**
+     * Log out everywhere
+     *
+     * Revoke all of the user's access tokens.
+     */
     public function logoutAll(Request $request)
     {
         $request->user()->tokens()->delete();
@@ -74,6 +96,11 @@ class AuthController extends Controller
         return $this->success(null, 'Logged out from all devices.');
     }
 
+    /**
+     * Profile
+     *
+     * Get the authenticated user.
+     */
     public function profile(Request $request)
     {
         return $this->success([

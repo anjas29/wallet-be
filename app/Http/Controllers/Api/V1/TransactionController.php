@@ -7,6 +7,7 @@ use App\Http\Resources\TransactionResource;
 use App\Http\Resources\TransferResource;
 use App\Services\TransactionService;
 use App\Services\TransferService;
+use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
@@ -16,6 +17,10 @@ class TransactionController extends Controller
         private TransferService $transfers,
     ) {}
 
+    /**
+     * List transactions
+     */
+    #[Group('Transactions', weight: 3)]
     public function index(Request $request)
     {
         $items = $this->transactions->list($request->user()->id, $request->input('since'), $this->limit($request));
@@ -23,6 +28,10 @@ class TransactionController extends Controller
         return $this->collection(TransactionResource::collection($items));
     }
 
+    /**
+     * Get transaction
+     */
+    #[Group('Transactions', weight: 3)]
     public function show(Request $request, string $id)
     {
         $transaction = $this->transactions->find($request->user()->id, $id, $request->input('since'));
@@ -32,6 +41,10 @@ class TransactionController extends Controller
         return $this->success(new TransactionResource($transaction));
     }
 
+    /**
+     * List transfers
+     */
+    #[Group('Transfers', weight: 4)]
     public function transfers(Request $request)
     {
         $items = $this->transfers->list($request->user()->id, $request->input('since'), $this->limit($request));
@@ -39,6 +52,10 @@ class TransactionController extends Controller
         return $this->collection(TransferResource::collection($items));
     }
 
+    /**
+     * Get transfer
+     */
+    #[Group('Transfers', weight: 4)]
     public function showTransfer(Request $request, string $id)
     {
         $transfer = $this->transfers->find($request->user()->id, $id, $request->input('since'));
