@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\RefreshTokenException;
 use App\Support\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -42,6 +43,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 ),
                 $e instanceof AuthenticationException => ApiResponse::error(
                     'Unauthenticated.',
+                    401,
+                ),
+                $e instanceof RefreshTokenException => ApiResponse::error(
+                    $e->getMessage(),
                     401,
                 ),
                 $e instanceof ModelNotFoundException,

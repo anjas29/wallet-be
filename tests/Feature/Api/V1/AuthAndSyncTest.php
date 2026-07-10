@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\RefreshToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -36,11 +37,92 @@ class AuthAndSyncTest extends TestCase
         $token = $response->json('data.token');
         $this->assertNotEmpty($token);
 
+        // Register also issues a refresh token (kept alongside the access token).
+        $this->assertNotEmpty($response->json('data.refresh_token'));
+        $this->assertNotEmpty($response->json('data.refresh_expires_at'));
+
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/auth/profile')
             ->assertStatus(200)
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.user.email', 'ada@example.com');
+    }
+
+    public function test_can_refresh_access_token_and_rotates_the_refresh_token(): void
+    {
+        $register = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Ref',
+            'email' => 'ref@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $oldRefresh = $register->json('data.refresh_token');
+
+        $refresh = $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $oldRefresh])
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.user.email', 'ref@example.com');
+
+        $newRefresh = $refresh->json('data.refresh_token');
+        $newAccess = $refresh->json('data.token');
+
+        // Rotated: a new refresh token is issued, and the new access token works.
+        $this->assertNotEmpty($newRefresh);
+        $this->assertNotSame($oldRefresh, $newRefresh);
+
+        $this->withHeader('Authorization', 'Bearer '.$newAccess)
+            ->getJson('/api/v1/auth/profile')
+            ->assertStatus(200);
+    }
+
+    public function test_invalid_and_expired_refresh_tokens_are_rejected(): void
+    {
+        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => 'does-not-exist'])
+            ->assertStatus(401)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Invalid refresh token.');
+
+        $user = User::factory()->create();
+        $plain = Str::random(64);
+        RefreshToken::create([
+            'user_id' => $user->id,
+            'family_id' => (string) Str::ulid(),
+            'token_hash' => hash('sha256', $plain),
+            'device_id' => 'default',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $plain])
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Refresh token has expired.');
+    }
+
+    public function test_reusing_a_rotated_refresh_token_revokes_the_family(): void
+    {
+        $register = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Reuse',
+            'email' => 'reuse@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $original = $register->json('data.refresh_token');
+
+        // First use rotates successfully.
+        $rotated = $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $original])
+            ->assertStatus(200)
+            ->json('data.refresh_token');
+
+        // Replaying the original (now revoked) token is rejected as reuse.
+        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $original])
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Refresh token has been revoked.');
+
+        // ...and the whole family is revoked, so the rotated token no longer works either.
+        $this->postJson('/api/v1/auth/refresh', ['refresh_token' => $rotated])
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Refresh token has been revoked.');
     }
 
     public function test_invalid_credentials_return_error_envelope(): void
@@ -138,7 +220,8 @@ class AuthAndSyncTest extends TestCase
             ->assertStatus(201)
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.name', 'Checking')
-            ->assertJsonPath('data.balance', '50.00');
+            ->assertJsonPath('data.balance', '50.00')
+            ->assertJsonPath('data.color', '#64748B'); // DB default when not supplied
 
         $this->assertDatabaseHas('accounts', [
             'id' => $accountResponse->json('data.id'),

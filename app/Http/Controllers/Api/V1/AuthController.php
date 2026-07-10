@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\AuthTokenService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -14,10 +15,12 @@ use Illuminate\Validation\Rules\Password;
 #[Group('Authentication', weight: 1)]
 class AuthController extends Controller
 {
+    public function __construct(private AuthTokenService $tokens) {}
+
     /**
      * Register
      *
-     * Create a new user account and issue an access token.
+     * Create a new user account and issue access + refresh tokens.
      */
     public function register(Request $request)
     {
@@ -36,19 +39,18 @@ class AuthController extends Controller
         // Reload so database-assigned defaults (e.g. role) are reflected in the response.
         $user->refresh();
 
-        $tokenName = $request->header('X-Device-Id', 'default');
-        $token = $user->createToken($tokenName)->plainTextToken;
+        $tokens = $this->tokens->issue($user, ...$this->deviceContext($request));
 
         return $this->success([
             'user' => new UserResource($user),
-            'token' => $token,
+            ...$tokens,
         ], 'Registration successful.', 201);
     }
 
     /**
      * Log in
      *
-     * Authenticate with email and password and issue an access token.
+     * Authenticate with email and password and issue access + refresh tokens.
      */
     public function login(Request $request)
     {
@@ -63,13 +65,35 @@ class AuthController extends Controller
             return $this->error('Invalid credentials.', 401);
         }
 
-        $tokenName = $request->header('X-Device-Id', 'default');
-        $token = $user->createToken($tokenName)->plainTextToken;
+        $tokens = $this->tokens->issue($user, ...$this->deviceContext($request));
 
         return $this->success([
             'user' => new UserResource($user),
-            'token' => $token,
+            ...$tokens,
         ], 'Login successful.');
+    }
+
+    /**
+     * Refresh
+     *
+     * Exchange a valid refresh token for a new access token. The refresh token is rotated:
+     * the old one is revoked and a new one returned.
+     */
+    public function refresh(Request $request)
+    {
+        $data = $request->validate([
+            'refresh_token' => ['required', 'string'],
+        ]);
+
+        $result = $this->tokens->refresh($data['refresh_token'], ...$this->deviceContext($request));
+
+        $user = $result['user'];
+        unset($result['user']);
+
+        return $this->success([
+            'user' => new UserResource($user),
+            ...$result,
+        ], 'Token refreshed.');
     }
 
     /**
@@ -106,5 +130,19 @@ class AuthController extends Controller
         return $this->success([
             'user' => new UserResource($request->user()),
         ]);
+    }
+
+    /**
+     * Device context for token issuance: [deviceId, deviceName, ip].
+     *
+     * @return array{0: string, 1: string|null, 2: string|null}
+     */
+    private function deviceContext(Request $request): array
+    {
+        return [
+            $request->header('X-Device-Id', 'default'),
+            $request->header('X-Device-Name'),
+            $request->ip(),
+        ];
     }
 }
