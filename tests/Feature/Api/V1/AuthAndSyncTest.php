@@ -496,4 +496,58 @@ class AuthAndSyncTest extends TestCase
         $this->assertDatabaseHas('liabilities', ['id' => $liabilityId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('liability_payments', ['id' => $paymentId, 'liability_id' => $liabilityId]);
     }
+
+    public function test_sync_pull_returns_initial_snapshot_and_delta_with_tombstones(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $currencyId = (string) Str::ulid();
+        DB::table('currencies')->insert([
+            'id' => $currencyId, 'code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$',
+            'decimal_places' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $userCurrencyId = (string) Str::ulid();
+        $accountId = (string) Str::ulid();
+        DB::table('user_currencies')->insert([
+            'id' => $userCurrencyId, 'user_id' => $user->id, 'currency_id' => $currencyId,
+            'exchange_rate' => 1, 'is_anchor' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('accounts')->insert([
+            'id' => $accountId, 'user_id' => $user->id, 'user_currency_id' => $userCurrencyId,
+            'name' => 'Cash', 'type' => 'cash', 'color' => '#64748B', 'initial_balance' => '0',
+            'is_default' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Initial pull (no `since`): full snapshot across collections.
+        $initial = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/sync/pull')
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(1, 'data.currencies')
+            ->assertJsonCount(1, 'data.user_currencies')
+            ->assertJsonCount(1, 'data.accounts');
+
+        $cursor = $initial->json('data.server_time');
+        $this->assertNotEmpty($cursor);
+
+        // Nothing changed since the cursor → empty delta.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/sync/pull?since='.urlencode($cursor))
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data.accounts');
+
+        // Soft-delete the account, then a delta pull must return it as a tombstone.
+        // Advance the clock so updated_at is strictly after the cursor (stored at second precision).
+        $this->travel(5)->seconds();
+        DB::table('accounts')->where('id', $accountId)->update(['deleted_at' => now(), 'updated_at' => now()]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/sync/pull?since='.urlencode($cursor))
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data.accounts')
+            ->assertJsonPath('data.accounts.0.id', $accountId)
+            ->assertJsonPath('data.accounts.0.deleted_at', fn ($v) => $v !== null);
+    }
 }

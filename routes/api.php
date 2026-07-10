@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\LiabilityController;
 use App\Http\Controllers\Api\V1\MiscController;
+use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
 use Illuminate\Support\Facades\Route;
@@ -47,7 +48,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/liability-payments', [LiabilityController::class, 'payments']);
         Route::get('/liability-payments/{id}', [LiabilityController::class, 'showPayment']);
 
-        // Offline-first batch write path
+        // Offline-first sync: batch read (pull) + batch write (push)
+        Route::get('/sync/pull', [SyncPullController::class, 'index']);
         Route::post('/sync/push', [SyncPushController::class, 'store']);
     });
 });
