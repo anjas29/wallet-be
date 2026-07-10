@@ -14,6 +14,7 @@ class Account extends BaseModel
         'user_currency_id',
         'name',
         'type',
+        'color',
         'initial_balance',
         'is_default',
     ];

@@ -18,6 +18,7 @@ class AccountResource extends JsonResource
             'user_currency_id' => $this->user_currency_id,
             'name' => $this->name,
             'type' => $this->type,
+            'color' => $this->color,
             'initial_balance' => $this->initial_balance,
             // Derived (attached by AccountService); absent on write/sync responses.
             'balance' => $this->whenNotNull($this->balance),

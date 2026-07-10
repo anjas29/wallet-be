@@ -61,14 +61,22 @@ class AccountService
             ]);
         }
 
-        $account = $this->upsertEntity(Account::class, $id, $op, [
+        $payload = [
             'user_id' => $user->id,
             'user_currency_id' => $data['user_currency_id'],
             'name' => $data['name'] ?? null,
             'type' => $data['type'] ?? null,
             'initial_balance' => $data['initial_balance'] ?? '0',
             'is_default' => (bool) ($data['is_default'] ?? false),
-        ], $user->id);
+        ];
+
+        // Only set color when supplied: lets the DB default apply on create and
+        // leaves the existing value untouched on updates that omit it.
+        if (isset($data['color'])) {
+            $payload['color'] = $data['color'];
+        }
+
+        $account = $this->upsertEntity(Account::class, $id, $op, $payload, $user->id);
 
         if ($account->is_default) {
             Account::where('user_id', $user->id)
