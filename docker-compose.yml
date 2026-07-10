@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: wallet-be-app
     working_dir: /var/www/html
-    env_file:
-      - .env
+    # NOTE: intentionally no `env_file` here. Laravel reads the mounted .env file directly;
+    # injecting it as OS env vars would override phpunit.xml's test config (force included),
+    # causing the test suite to run RefreshDatabase against the real Postgres DB.
     volumes:
       - .:/var/www/html
     depends_on:

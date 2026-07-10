@@ -18,19 +18,30 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!--
+            force="true" is REQUIRED here: docker-compose's `env_file: .env` injects DB_CONNECTION,
+            APP_ENV, etc. as real OS environment variables, which otherwise win over these entries.
+            Without force, tests run against the real Postgres DB and RefreshDatabase wipes dev data.
+        -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <!--
+            Test against a DEDICATED Postgres database (same engine as dev/prod, so the
+            Postgres-specific migrations — CHECK constraints, enums — run identically), never
+            the real `wallet` DB. The `wallet_testing` database must exist; RefreshDatabase then
+            migrates it fresh per run.
+        -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_DATABASE" value="wallet_testing" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>
