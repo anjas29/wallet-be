@@ -88,6 +88,81 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('message', 'Resource not found.');
     }
 
+    public function test_can_create_user_currency_and_account_via_rest(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $currencyId = (string) Str::ulid();
+        DB::table('currencies')->insert([
+            'id' => $currencyId,
+            'code' => 'USD',
+            'name' => 'US Dollar',
+            'symbol' => '$',
+            'decimal_places' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Create the user currency
+        $ucResponse = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/user-currencies', [
+                'currency_id' => $currencyId,
+                'exchange_rate' => '1',
+                'is_anchor' => true,
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('status_code', 201)
+            ->assertJsonPath('data.currency_id', $currencyId)
+            ->assertJsonPath('data.is_anchor', true);
+
+        $userCurrencyId = $ucResponse->json('data.id');
+        $this->assertDatabaseHas('user_currencies', ['id' => $userCurrencyId, 'user_id' => $user->id]);
+
+        // Duplicate currency for the same user is rejected
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/user-currencies', ['currency_id' => $currencyId])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        // Create an account referencing that currency
+        $accountResponse = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/accounts', [
+                'user_currency_id' => $userCurrencyId,
+                'name' => 'Checking',
+                'type' => 'bank',
+                'initial_balance' => '50.00',
+                'is_default' => true,
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.name', 'Checking')
+            ->assertJsonPath('data.balance', '50.00');
+
+        $this->assertDatabaseHas('accounts', [
+            'id' => $accountResponse->json('data.id'),
+            'user_id' => $user->id,
+            'is_default' => true,
+        ]);
+    }
+
+    public function test_create_account_rejects_currency_not_owned_by_user(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/accounts', [
+                'user_currency_id' => (string) Str::ulid(),
+                'name' => 'Ghost',
+                'type' => 'cash',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonStructure(['errors' => ['data.user_currency_id']]);
+    }
+
     public function test_sync_push_can_create_account_and_transaction_for_authenticated_user(): void
     {
         $user = User::factory()->create();

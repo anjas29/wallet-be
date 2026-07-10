@@ -26,10 +26,12 @@ Route::prefix('v1')->group(function () {
 
         // The user's currency holdings
         Route::get('/user-currencies', [CurrencyController::class, 'index']);
+        Route::post('/user-currencies', [CurrencyController::class, 'store']);
         Route::get('/user-currencies/{id}', [CurrencyController::class, 'show']);
 
         // Accounts (each resource includes a derived balance)
         Route::get('/accounts', [AccountController::class, 'index']);
+        Route::post('/accounts', [AccountController::class, 'store']);
         Route::get('/accounts/{id}', [AccountController::class, 'show']);
 
         // Transactions + transfers

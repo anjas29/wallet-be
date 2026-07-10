@@ -8,6 +8,7 @@ use App\Models\UserCurrency;
 use App\Services\Concerns\DeltaSyncQuery;
 use App\Services\Concerns\PersistsEntities;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class UserCurrencyService
@@ -23,6 +24,14 @@ class UserCurrencyService
     public function find(string $userId, string $id, ?string $since): ?UserCurrency
     {
         return $this->findDelta(UserCurrency::where('user_id', $userId), $id, $since);
+    }
+
+    /**
+     * REST create: server generates the ULID (unlike sync, where the client provides it).
+     */
+    public function create(User $user, array $data): UserCurrency
+    {
+        return $this->createOrUpdate($user, (string) Str::ulid(), 'create', $data);
     }
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): UserCurrency

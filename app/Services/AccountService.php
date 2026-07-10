@@ -11,6 +11,7 @@ use App\Models\UserCurrency;
 use App\Services\Concerns\DeltaSyncQuery;
 use App\Services\Concerns\PersistsEntities;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AccountService
@@ -32,6 +33,18 @@ class AccountService
         if ($account !== null) {
             $this->attachBalances($userId, new Collection([$account]));
         }
+
+        return $account;
+    }
+
+    /**
+     * REST create: server generates the ULID (unlike sync, where the client provides it).
+     */
+    public function create(User $user, array $data): Account
+    {
+        $account = $this->createOrUpdate($user, (string) Str::ulid(), 'create', $data);
+
+        $this->attachBalances($user->id, new Collection([$account]));
 
         return $account;
     }

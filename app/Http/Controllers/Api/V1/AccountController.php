@@ -14,6 +14,27 @@ class AccountController extends Controller
     public function __construct(private AccountService $accounts) {}
 
     /**
+     * Create account
+     *
+     * The server generates the account id. `user_currency_id` must be one of the caller's
+     * currency holdings. Marking `is_default` unsets the flag on the user's other accounts.
+     */
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'user_currency_id' => ['required', 'string'],
+            'name' => ['required', 'string', 'max:255'],
+            'type' => ['required', 'in:cash,bank,e_wallet,other'],
+            'initial_balance' => ['nullable', 'numeric', 'min:0'],
+            'is_default' => ['boolean'],
+        ]);
+
+        $account = $this->accounts->create($request->user(), $data);
+
+        return $this->success(new AccountResource($account), 'Account created.', 201);
+    }
+
+    /**
      * List accounts
      *
      * Each account includes a derived `balance` in its own currency.
