@@ -119,6 +119,9 @@ class SyncPushController extends Controller
      * and reported on its own. This is the only write path for wallet data — the GET endpoints are
      * read-only.
      *
+     * 📘 **Copy/paste guide** — a ready payload for every entity and operation:
+     * [/docs/push-changes](/docs/push-changes)
+     *
      * Each change is an object:
      *
      * ```json
