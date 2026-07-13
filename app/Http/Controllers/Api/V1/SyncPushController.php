@@ -54,7 +54,8 @@ class SyncPushController extends Controller
             'data' => [
                 'user_currency_id' => '01K3UC0000000000000000UC01',
                 'name' => 'Savings',
-                'type' => 'bank',
+                'notes' => 'Emergency fund',
+                'type' => 'savings',
                 'color' => '#22C55E',
                 'initial_balance' => '0',
                 'is_default' => false,
@@ -152,7 +153,7 @@ class SyncPushController extends Controller
      *   account's currency (no `currency_id`).
      * - **transfer**: `from_account_id`, `to_account_id`, `from_amount`, `to_amount`, `exchange_rate?`,
      *   `fee`, `description?`, `transfer_date`.
-     * - **account**: `user_currency_id`, `name`, `type` (`cash`|`bank`|`e_wallet`|`other`), `color?`,
+     * - **account**: `user_currency_id`, `name`, `notes?`, `type` (`bank_account`|`cash`|`credit_card`|`savings`), `color?`,
      *   `initial_balance`, `is_default`.
      * - **user_currency**: `currency_id`, `exchange_rate`, `is_anchor`.
      * - **liability**: `user_currency_id`, `name`, `type` (`loan`|`credit_card`|`personal`),

@@ -13,6 +13,7 @@ class Account extends BaseModel
         'user_id',
         'user_currency_id',
         'name',
+        'notes',
         'type',
         'color',
         'initial_balance',

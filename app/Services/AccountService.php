@@ -65,6 +65,7 @@ class AccountService
             'user_id' => $user->id,
             'user_currency_id' => $data['user_currency_id'],
             'name' => $data['name'] ?? null,
+            'notes' => $data['notes'] ?? null,
             'type' => $data['type'] ?? null,
             'initial_balance' => $data['initial_balance'] ?? '0',
             'is_default' => (bool) ($data['is_default'] ?? false),

@@ -213,7 +213,7 @@ class AuthAndSyncTest extends TestCase
             ->postJson('/api/v1/accounts', [
                 'user_currency_id' => $userCurrencyId,
                 'name' => 'Checking',
-                'type' => 'bank',
+                'type' => 'bank_account',
                 'initial_balance' => '50.00',
                 'is_default' => true,
             ])
@@ -416,7 +416,7 @@ class AuthAndSyncTest extends TestCase
             'user_id' => $user->id,
             'user_currency_id' => $userCurrencyId,
             'name' => 'Investment',
-            'type' => 'bank',
+            'type' => 'bank_account',
             'initial_balance' => '0',
             'is_default' => false,
             'created_at' => now(),

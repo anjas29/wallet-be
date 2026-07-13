@@ -17,6 +17,7 @@ class AccountResource extends JsonResource
             'user_id' => $this->user_id,
             'user_currency_id' => $this->user_currency_id,
             'name' => $this->name,
+            'notes' => $this->notes,
             'type' => $this->type,
             'color' => $this->color,
             'initial_balance' => $this->initial_balance,

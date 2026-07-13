@@ -24,7 +24,8 @@ class AccountController extends Controller
         $data = $request->validate([
             'user_currency_id' => ['required', 'string'],
             'name' => ['required', 'string', 'max:255'],
-            'type' => ['required', 'in:cash,bank,e_wallet,other'],
+            'notes' => ['nullable', 'string'],
+            'type' => ['required', 'in:bank_account,cash,credit_card,savings'],
             'color' => ['nullable', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'initial_balance' => ['nullable', 'numeric', 'min:0'],
             'is_default' => ['boolean'],
