@@ -20,3 +20,27 @@ Route::get('/docs/push-changes', function () {
         'content' => Str::markdown(file_get_contents($path)),
     ]);
 })->name('docs.push-changes');
+
+// Server-side PostgreSQL schema, generated from the migrations (source of truth).
+Route::get('/docs/database-schema', function () {
+    $path = base_path('docs/database-schema.md');
+
+    abort_unless(is_file($path), 404);
+
+    return view('docs.page', [
+        'title' => 'Server Database Schema',
+        'content' => Str::markdown(file_get_contents($path)),
+    ]);
+})->name('docs.database-schema');
+
+// Android Room mirror of the server schema, for offline-first sync.
+Route::get('/docs/android-room-schema', function () {
+    $path = base_path('docs/android-room-schema.md');
+
+    abort_unless(is_file($path), 404);
+
+    return view('docs.page', [
+        'title' => 'Android Room Schema',
+        'content' => Str::markdown(file_get_contents($path)),
+    ]);
+})->name('docs.android-room-schema');
