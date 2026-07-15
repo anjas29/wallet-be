@@ -7,7 +7,6 @@
 .phpactor.json
 .phpunit.result.cache
 /.codex
-/.github/workflows/deploy.yml
 /.cursor/
 /.idea
 /.nova
