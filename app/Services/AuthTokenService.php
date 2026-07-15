@@ -11,9 +11,9 @@ use Illuminate\Support\Str;
 class AuthTokenService
 {
     /** Access token lifetime (experiment: short-lived, 2 minutes). */
-    public const ACCESS_TTL_MINUTES = 2;
+    public const ACCESS_TTL_DAYS = 1;
 
-    public const REFRESH_TTL_DAYS = 7;
+    public const REFRESH_TTL_DAYS = 30;
 
     /**
      * Issue a fresh access token plus a brand-new refresh-token family (login/register).
@@ -22,7 +22,7 @@ class AuthTokenService
      */
     public function issue(User $user, string $deviceId, ?string $deviceName, ?string $ip): array
     {
-        $accessToken = $user->createToken($deviceId, ['*'], now()->addMinutes(self::ACCESS_TTL_MINUTES))->plainTextToken;
+        $accessToken = $user->createToken($deviceId, ['*'], now()->addDays(self::ACCESS_TTL_DAYS))->plainTextToken;
 
         $refresh = $this->mintRefreshToken($user, (string) Str::ulid(), $deviceId, $deviceName, $ip);
 
@@ -66,7 +66,7 @@ class AuthTokenService
         $record->update(['revoked_at' => now()]);
 
         $refresh = $this->mintRefreshToken($user, $record->family_id, $deviceId ?: $record->device_id, $deviceName, $ip);
-        $accessToken = $user->createToken($deviceId ?: $record->device_id, ['*'], now()->addMinutes(self::ACCESS_TTL_MINUTES))->plainTextToken;
+        $accessToken = $user->createToken($deviceId ?: $record->device_id, ['*'], now()->addDays(self::ACCESS_TTL_DAYS))->plainTextToken;
 
         return [
             'user' => $user,
