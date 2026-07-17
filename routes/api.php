@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\MiscController;
 use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
+use App\Http\Controllers\SslTestController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -52,4 +53,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/sync/pull', [SyncPullController::class, 'index']);
         Route::post('/sync/push', [SyncPushController::class, 'store']);
     });
+});
+
+/*
+| SSL pinning test harness (unversioned, non-prod only).
+| Hard-gated behind config('ssltest.enabled') in the controller; see
+| config/ssltest.php and ssl-test/README.md. Kept out of the /v1 group on
+| purpose — this is an ops/QA surface, not part of the product API contract.
+*/
+Route::middleware(['auth:sanctum', 'throttle:6,1'])->prefix('config')->group(function () {
+    Route::get('ssl-info', [SslTestController::class, 'info']);
+    Route::post('ssl-rotation', [SslTestController::class, 'rotate']);
+    Route::post('ssl-change/{v}', [SslTestController::class, 'change'])->whereIn('v', ['a', 'b', 'c']);
 });

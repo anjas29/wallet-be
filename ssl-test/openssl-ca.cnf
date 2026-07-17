@@ -1,0 +1,35 @@
+# Minimal CA config for `openssl ca`, used by ssl-apply.sh to issue leaf certs
+# with minute-precise validity windows on OpenSSL 3.0 (which lacks the
+# `openssl x509 -req -not_before/-not_after` flags added in 3.2).
+#
+# The active CA directory is injected per-invocation via $ENV::CADIR and the
+# leaf SAN via $ENV::LEAF_HOST, so a single config serves both CA-A and CA-B.
+
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir            = $ENV::CADIR
+database       = $dir/index.txt
+new_certs_dir  = $dir/newcerts
+serial         = $dir/serial
+certificate    = $dir/ca.crt
+private_key    = $dir/ca.key
+default_md     = sha256
+default_days   = 90
+policy         = policy_anything
+email_in_dn    = no
+rand_serial    = no
+unique_subject = no
+
+[ policy_anything ]
+commonName = supplied
+
+[ v3_leaf ]
+basicConstraints = CA:FALSE
+keyUsage         = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName   = @alt_names
+
+[ alt_names ]
+DNS.1 = $ENV::LEAF_HOST

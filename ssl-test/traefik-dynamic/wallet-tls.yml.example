@@ -1,0 +1,17 @@
+# Example of the dynamic config ssl-apply.sh generates at
+# /opt/ssl-test/dynamic/wallet-tls.yml. Do NOT hand-edit on the box — the
+# script rewrites it on every rotate/change. Paths are as seen INSIDE the
+# Traefik container (sets/ is mounted at /certs).
+#
+# Traefik picks this cert for the host SNI from its store, overriding any ACME
+# resolver. Rewriting the file (note the changing timestamp) triggers the file
+# provider's watch, so Traefik hot-reloads with no restart or signal.
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/a/fullchain.pem
+        keyFile: /certs/a/privkey.pem
+  certificates:
+    - certFile: /certs/a/fullchain.pem
+      keyFile: /certs/a/privkey.pem
