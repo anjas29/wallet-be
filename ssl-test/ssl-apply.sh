@@ -26,28 +26,48 @@ log() { echo "[ssl-apply] $*" >&2; }
 # total_minutes <days> <minutes> — additive; caller supplies default when both blank.
 mins() { echo $(( ${1:-0} * 1440 + ${2:-0} )); }
 
-# Ensure a manual CA exists (self-signed root + openssl-ca bookkeeping files).
+# Ensure a manual 3-tier CA exists: self-signed root -> intermediate (signed by
+# the root, pathlen:0) -> leaves (signed by the intermediate). Mirrors a real
+# Let's Encrypt chain (leaf <- intermediate <- root). The intermediate holds the
+# openssl-ca bookkeeping, since it is what signs the leaves.
 ensure_ca() {
   local ca="$1" cadir="$BASE/ca/$ca"
-  mkdir -p "$cadir/newcerts"
-  [ -f "$cadir/index.txt" ]      || : > "$cadir/index.txt"
-  [ -f "$cadir/index.txt.attr" ] || echo "unique_subject = no" > "$cadir/index.txt.attr"
-  [ -f "$cadir/serial" ]         || echo 1000 > "$cadir/serial"
-  if [ ! -f "$cadir/ca.crt" ] || [ ! -f "$cadir/ca.key" ]; then
-    log "generating manual CA-${ca^^}"
-    openssl genrsa -out "$cadir/ca.key" 4096
-    openssl req -x509 -new -key "$cadir/ca.key" -sha256 -days 3650 \
+  local root="$cadir/root" int="$cadir/int"
+  mkdir -p "$root" "$int/newcerts"
+  [ -f "$int/index.txt" ]      || : > "$int/index.txt"
+  [ -f "$int/index.txt.attr" ] || echo "unique_subject = no" > "$int/index.txt.attr"
+  [ -f "$int/serial" ]         || echo 1000 > "$int/serial"
+
+  # Root CA (self-signed).
+  if [ ! -f "$root/ca.crt" ] || [ ! -f "$root/ca.key" ]; then
+    log "generating Root CA-${ca^^}"
+    openssl genrsa -out "$root/ca.key" 4096
+    openssl req -x509 -new -key "$root/ca.key" -sha256 -days 3650 \
       -subj "/CN=Test Root CA ${ca^^}" \
       -addext "basicConstraints=critical,CA:TRUE" \
       -addext "keyUsage=critical,keyCertSign,cRLSign" \
-      -out "$cadir/ca.crt"
+      -out "$root/ca.crt"
+  fi
+
+  # Intermediate CA (signed by the root).
+  if [ ! -f "$int/ca.crt" ] || [ ! -f "$int/ca.key" ]; then
+    log "generating Intermediate CA-${ca^^}"
+    openssl genrsa -out "$int/ca.key" 4096
+    openssl req -new -key "$int/ca.key" -subj "/CN=Test Intermediate CA ${ca^^}" -out /tmp/int.csr
+    printf 'basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n' > /tmp/int.ext
+    openssl x509 -req -in /tmp/int.csr -CA "$root/ca.crt" -CAkey "$root/ca.key" \
+      -CAcreateserial -sha256 -days 1825 -extfile /tmp/int.ext -out "$int/ca.crt"
+    rm -f /tmp/int.csr /tmp/int.ext
   fi
 }
 
 # issue_leaf <set> <ca> <total_minutes>   (minutes <= 0 => already-expired window)
+# The leaf is signed by the INTERMEDIATE; fullchain = leaf + intermediate + root
+# so the served chain is leaf <- intermediate <- root (like real Let's Encrypt).
 issue_leaf() {
   local set="$1" ca="$2" mins="$3"
   local d="$BASE/sets/$set" cadir="$BASE/ca/$ca"
+  local root="$cadir/root" int="$cadir/int"
   ensure_ca "$ca"
   mkdir -p "$d"
 
@@ -63,20 +83,20 @@ issue_leaf() {
     NB=$(date -u -d "$(( mins - 1440 )) minutes" +%Y%m%d%H%M%SZ)  # start a day before end
   fi
 
-  CADIR="$cadir" LEAF_HOST="$HOST" openssl ca -config "$CACNF" -batch -notext \
+  CADIR="$int" LEAF_HOST="$HOST" openssl ca -config "$CACNF" -batch -notext \
     -in /tmp/leaf.csr -out /tmp/leaf.pem \
     -startdate "$NB" -enddate "$NA" -extensions v3_leaf
-  cat /tmp/leaf.pem "$cadir/ca.crt" > "$d/fullchain.pem"
+  cat /tmp/leaf.pem "$int/ca.crt" "$root/ca.crt" > "$d/fullchain.pem"
   rm -f /tmp/leaf.csr /tmp/leaf.pem
 
   write_meta "$set" "$ca"
-  log "issued leaf: set=$set ca=$ca notBefore=$NB notAfter=$NA"
+  log "issued leaf: set=$set ca=$ca notBefore=$NB notAfter=$NA (leaf<-int<-root)"
 }
 
 write_meta() {
   local set="$1" ca="$2"
   cat > "$BASE/sets/$set/meta.json" <<EOF
-{ "name": "manual-ca-${ca}", "ca": "$ca", "description": "Leaf under manual CA-${ca^^}" }
+{ "name": "manual-ca-${ca}", "ca": "$ca", "description": "Leaf <- Intermediate CA-${ca^^} <- Root CA-${ca^^}" }
 EOF
 }
 
