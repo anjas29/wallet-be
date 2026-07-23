@@ -41,6 +41,6 @@ class Transaction extends BaseModel
 
     public function category(): BelongsTo
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(UserCategory::class, 'category_id');
     }
 }

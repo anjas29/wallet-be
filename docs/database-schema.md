@@ -1,5 +1,7 @@
 # Server Database Schema — Wallet BE
 
+_Version **1.1.0** — 2026-07-24 · see [Changelog](#changelog)_
+
 The authoritative PostgreSQL schema, derived from the migrations in `database/migrations`. This is the source of truth that the [Android Room mirror](/docs/android-room-schema) shadows for offline-first sync.
 
 ## Conventions
@@ -27,6 +29,7 @@ The authoritative PostgreSQL schema, derived from the migrations in `database/mi
 | `email_verified_at` | timestamp | nullable |
 | `password` | string | hashed |
 | `role` | enum(`super_admin`,`user`) | default `user` |
+| `avatar_path` | string | nullable — profile picture path/URL (added v1.1.0) |
 | `remember_token` | string | nullable |
 | `created_at` / `updated_at` | timestamp | |
 
@@ -64,6 +67,22 @@ The authoritative PostgreSQL schema, derived from the migrations in `database/mi
 | `deleted_at` | timestamp | soft delete |
 | `created_at` / `updated_at` | timestamp | |
 
+> As of v1.1.0 this table is a **read-only default/template** only. Transactions no longer reference it — the mobile client reads this list (via sync-pull / `GET /categories`) and seeds per-user rows into `user_categories`.
+
+### `user_categories` — a user's own categories (added v1.1.0)
+| Column | Type | Constraints / Notes |
+|---|---|---|
+| `id` | ulid | PK |
+| `user_id` | ulid | FK → `users` · **cascade** on delete |
+| `name` | string | |
+| `type` | enum(`income`,`expense`) | |
+| `icon` | string | icon key for mobile UI |
+| `color` | string | nullable — hex |
+| `deleted_at` | timestamp | soft delete |
+| `created_at` / `updated_at` | timestamp | |
+
+**Index:** `(user_id, updated_at)`. User-owned and writable via `POST /sync/push` (entity `user_category`). Seeded client-side from the global `categories` template; users may add their own.
+
 ### `accounts`
 | Column | Type | Constraints / Notes |
 |---|---|---|
@@ -89,7 +108,7 @@ The authoritative PostgreSQL schema, derived from the migrations in `database/mi
 | `id` | ulid | PK |
 | `user_id` | ulid | FK → `users` · **cascade** |
 | `account_id` | ulid | FK → `accounts` · **restrict** |
-| `category_id` | ulid | FK → `categories` · **restrict** |
+| `category_id` | ulid | FK → `user_categories` · **restrict** _(was `categories` before v1.1.0)_ |
 | `exchange_rate_to_anchor` | decimal(20,6) | default `1` — snapshot at creation |
 | `type` | enum(`income`,`expense`) | denormalized from category for fast filtering |
 | `amount` | decimal(15,2) unsigned | `CHECK (amount > 0)` |
@@ -140,11 +159,23 @@ Auth, sync, and Laravel scaffolding — not detailed here:
 
 ```
 users ──┬──< user_currencies >── currencies
+        ├──< user_categories
         ├──< accounts (user_currency_id → user_currencies)
-        ├──< transactions (account_id → accounts, category_id → categories)
+        ├──< transactions (account_id → accounts, category_id → user_categories)
         └──< transfers (from_account_id, to_account_id → accounts)
 
-categories (global reference) ──< transactions
+categories (global reference) ──▷ seeds → user_categories ──< transactions
 ```
 
 For how these tables are mirrored client-side and reconciled, see the **[Android Room schema](/docs/android-room-schema)** and the **[Push Changes guide](/docs/push-changes)**.
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-07-24)
+  - Added `users.avatar_path` (nullable) for a profile picture.
+  - Added the `user_categories` table (user-owned categories, sync-writable).
+  - Repointed `transactions.category_id` FK from `categories` → `user_categories`.
+  - `categories` is now a read-only global template that seeds per-user rows.
+- **1.0.0** — Initial schema derived from the `2026_07_09` migration set (through the `2026-07-13` account-type migration).

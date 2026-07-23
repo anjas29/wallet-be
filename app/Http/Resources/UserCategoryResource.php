@@ -5,7 +5,7 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class UserResource extends JsonResource
+class UserCategoryResource extends JsonResource
 {
     /**
      * @return array<string, mixed>
@@ -15,12 +15,12 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'email' => $this->email,
-            'role' => $this->role,
-            'avatar_path' => $this->avatar_path,
-            'email_verified_at' => $this->email_verified_at?->toIso8601String(),
+            'type' => $this->type,
+            'icon' => $this->icon,
+            'color' => $this->color,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
+            'deleted_at' => $this->deleted_at?->toIso8601String(),
         ];
     }
 }

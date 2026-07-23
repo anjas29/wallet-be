@@ -7,13 +7,14 @@ use App\Http\Resources\LiabilityPaymentResource;
 use App\Http\Resources\LiabilityResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\TransferResource;
+use App\Http\Resources\UserCategoryResource;
 use App\Http\Resources\UserCurrencyResource;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
 class SyncService
 {
-    private const ENTITIES = ['account', 'transaction', 'user_currency', 'transfer', 'liability', 'liability_payment'];
+    private const ENTITIES = ['account', 'transaction', 'user_currency', 'user_category', 'transfer', 'liability', 'liability_payment'];
 
     private const OPS = ['create', 'update', 'delete'];
 
@@ -21,6 +22,7 @@ class SyncService
         private AccountService $accounts,
         private TransactionService $transactions,
         private UserCurrencyService $userCurrencies,
+        private UserCategoryService $userCategories,
         private TransferService $transfers,
         private LiabilityService $liabilities,
         private LiabilityPaymentService $liabilityPayments,
@@ -93,6 +95,7 @@ class SyncService
             'account' => [$this->accounts, AccountResource::class],
             'transaction' => [$this->transactions, TransactionResource::class],
             'user_currency' => [$this->userCurrencies, UserCurrencyResource::class],
+            'user_category' => [$this->userCategories, UserCategoryResource::class],
             'transfer' => [$this->transfers, TransferResource::class],
             'liability' => [$this->liabilities, LiabilityResource::class],
             'liability_payment' => [$this->liabilityPayments, LiabilityPaymentResource::class],

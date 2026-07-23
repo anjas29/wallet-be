@@ -1,5 +1,7 @@
 # Android Room Schema (Offline-First) — mirrors the Wallet BE
 
+_Doc version **1.1.0** — 2026-07-24 · Room `@Database(version = 2)` · see [Changelog](#changelog)_
+
 A local Room mirror of the backend, built for full offline support: read/write locally, then reconcile via `GET /api/v1/sync/pull` (download) and `POST /api/v1/sync/push` (upload).
 
 ## Conventions
@@ -93,6 +95,27 @@ data class UserCurrencyEntity(
     val clientChangeId: String? = null,
 )
 
+// Added v1.1.0. User-owned categories (writable), distinct from the read-only global
+// `categories` reference above. Seed these locally from CategoryEntity on first run, then
+// let the user add their own; transactions reference a row here via categoryId.
+@Entity(
+    tableName = "user_categories",
+    indices = [Index("userId"), Index("updatedAt"), Index("pendingOp")],
+)
+data class UserCategoryEntity(
+    @PrimaryKey val id: String,
+    val userId: String,
+    val name: String,
+    val type: String,              // income | expense
+    val icon: String,
+    val color: String?,
+    val createdAt: String?,
+    val updatedAt: String,
+    val deletedAt: String?,
+    val pendingOp: PendingOp = PendingOp.NONE,
+    val clientChangeId: String? = null,
+)
+
 @Entity(
     tableName = "accounts",
     indices = [Index("userId"), Index("userCurrencyId"), Index("updatedAt"), Index("pendingOp")],
@@ -122,7 +145,7 @@ data class TransactionEntity(
     @PrimaryKey val id: String,
     val userId: String,
     val accountId: String,
-    val categoryId: String,
+    val categoryId: String,        // → user_categories.id (a UserCategoryEntity you own; changed v1.1.0)
     val type: String,              // income | expense
     val amount: String,            // decimal(15,2)
     val exchangeRateToAnchor: String,
@@ -213,6 +236,7 @@ data class ProfileEntity(         // the signed-in user
     val name: String,
     val email: String,
     val role: String,
+    val avatarPath: String?,      // profile picture path/URL (added v1.1.0)
     val updatedAt: String,
 )
 
@@ -246,7 +270,7 @@ interface AccountDao {
 }
 ```
 
-Reference DAOs (`CurrencyDao`, `CategoryDao`) only need `upsertAll` + observe queries — no dirty/push.
+Reference DAOs (`CurrencyDao`, `CategoryDao`) only need `upsertAll` + observe queries — no dirty/push. `UserCategoryDao` **is** writable, so it follows the full `AccountDao` pattern (`dirty()` / `clearPending()`).
 
 ---
 
@@ -254,10 +278,10 @@ Reference DAOs (`CurrencyDao`, `CategoryDao`) only need `upsertAll` + observe qu
 
 ```kotlin
 @Database(
-    version = 1,
+    version = 2,   // bumped 1 → 2 in v1.1.0: added UserCategoryEntity + ProfileEntity.avatarPath
     entities = [
         CurrencyEntity::class, CategoryEntity::class,
-        UserCurrencyEntity::class, AccountEntity::class,
+        UserCurrencyEntity::class, UserCategoryEntity::class, AccountEntity::class,
         TransactionEntity::class, TransferEntity::class,
         LiabilityEntity::class, LiabilityPaymentEntity::class,
         ProfileEntity::class, SyncStateEntity::class,
@@ -267,6 +291,34 @@ Reference DAOs (`CurrencyDao`, `CategoryDao`) only need `upsertAll` + observe qu
 abstract class WalletDatabase : RoomDatabase() {
     abstract fun accounts(): AccountDao
     // … one accessor per DAO
+}
+```
+
+**Migration 1 → 2** (v1.1.0):
+
+```kotlin
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE profile ADD COLUMN avatarPath TEXT")
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS user_categories (
+                id TEXT NOT NULL PRIMARY KEY,
+                userId TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                icon TEXT NOT NULL,
+                color TEXT,
+                createdAt TEXT,
+                updatedAt TEXT NOT NULL,
+                deletedAt TEXT,
+                pendingOp TEXT NOT NULL DEFAULT 'NONE',
+                clientChangeId TEXT
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_user_categories_userId ON user_categories(userId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_user_categories_updatedAt ON user_categories(updatedAt)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_user_categories_pendingOp ON user_categories(pendingOp)")
+    }
 }
 ```
 
@@ -297,6 +349,15 @@ See **[Push Changes guide](/docs/push-changes)** for the exact per-entity payloa
 
 ## Notes
 - **Cursor:** currently the server's `server_time` (ISO-8601). If the BE later adds a bigint `version`, only `sync_state.cursor` and the query param change — the entity schema is unaffected.
-- **Order of applying a pull:** reference (currencies, categories) → user_currencies → accounts → transactions/transfers → liabilities → liability_payments, so relations resolve.
+- **Order of applying a pull:** reference (currencies, categories) → user_currencies → user_categories → accounts → transactions/transfers → liabilities → liability_payments, so relations resolve.
 - **Derived, never stored:** account balance, transaction currency.
-```
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-07-24) — Room `@Database` `version = 1` → `2` (`MIGRATION_1_2`).
+  - Added `UserCategoryEntity` (`user_categories`, pushed + pulled), mirroring the new BE table.
+  - `TransactionEntity.categoryId` now references a `UserCategoryEntity` you own (was the global `categories`).
+  - Added `ProfileEntity.avatarPath`.
+- **1.0.0** — Initial Room mirror (`@Database(version = 1)`).

@@ -1,5 +1,7 @@
 # Wallet API v1 — Implementation Reference
 
+_Version **1.1.0** — 2026-07-24 · see [Changelog](#5-changelog)_
+
 Base URL: `/api/v1`
 
 All authenticated routes require a Bearer token from Sanctum.
@@ -27,6 +29,7 @@ Response `201`:
     "name": "string",
     "email": "string",
     "role": "super_admin | user",
+    "avatar_path": "string | null",
     "created_at": "string (ISO-8601)",
     "updated_at": "string (ISO-8601)"
   },
@@ -54,7 +57,7 @@ Response `200`:
 
 ```json
 {
-  "user": { "id": "string (ULID)", "name": "string", "email": "string", "role": "super_admin | user" },
+  "user": { "id": "string (ULID)", "name": "string", "email": "string", "role": "super_admin | user", "avatar_path": "string | null" },
   "token": "string"
 }
 ```
@@ -81,6 +84,7 @@ Response `200`:
     "name": "string",
     "email": "string",
     "role": "super_admin | user",
+    "avatar_path": "string | null",
     "created_at": "string (ISO-8601)",
     "updated_at": "string (ISO-8601)"
   }
@@ -143,6 +147,23 @@ Optional query parameter:
 - `type`: `income | expense`
 
 Category object:
+
+```json
+{
+  "id": "string (ULID)",
+  "name": "string",
+  "type": "income | expense",
+  "icon": "string",
+  "color": "string | null",
+  "created_at": "string (ISO-8601)",
+  "updated_at": "string (ISO-8601)",
+  "deleted_at": "string (ISO-8601) | null"
+}
+```
+
+> **User categories** (added v1.1.0) are user-owned and have **no dedicated REST list endpoint** — they are delivered under `user_categories` in the sync-pull payload and written via `sync/push` (entity `user_category`). The global `categories` above remain read-only and are the template the client seeds from.
+
+User category object:
 
 ```json
 {
@@ -297,7 +318,7 @@ Request body:
   "changes": [
     {
       "client_change_id": "string",
-      "entity": "account | transaction | user_currency | transfer | liability | liability_payment",
+      "entity": "account | transaction | user_currency | user_category | transfer | liability | liability_payment",
       "op": "create | update | delete",
       "id": "string (ULID)",
       "data": { "...entity-specific fields..." }
@@ -363,6 +384,16 @@ Response `200`:
 }
 ```
 
+#### User category
+```json
+{
+  "name": "string",
+  "type": "income | expense",
+  "icon": "string",
+  "color": "string | null"
+}
+```
+
 #### Transfer
 ```json
 {
@@ -407,3 +438,13 @@ Response `200`:
 ## 4. Notes
 - Monetary values are sent and returned as strings to preserve precision.
 - The API currently supports the core wallet workflow and does not implement transaction attachment upload/download yet.
+
+---
+
+## 5. Changelog
+
+- **1.1.0** (2026-07-24)
+  - Added `avatar_path` to the user object in register/login/profile responses.
+  - Added the `user_category` sync entity (pushable) and its `user_categories` sync-pull collection; documented the user-category object shape.
+  - Transaction `category_id` now references a user-owned `user_category` (not a global `category`).
+- **1.0.0** — Initial v1 reference.

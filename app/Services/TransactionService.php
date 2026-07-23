@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\Account;
-use App\Models\Category;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\UserCategory;
 use App\Services\Concerns\DeltaSyncQuery;
 use App\Services\Concerns\PersistsEntities;
 use Illuminate\Database\Eloquent\Collection;
@@ -38,7 +38,9 @@ class TransactionService
     public function createOrUpdate(User $user, string $id, string $op, array $data): Transaction
     {
         $ownsAccount = Account::where('id', $data['account_id'] ?? null)->where('user_id', $user->id)->exists();
-        $categoryExists = Category::where('id', $data['category_id'] ?? null)->exists();
+        $categoryExists = UserCategory::where('id', $data['category_id'] ?? null)
+            ->where('user_id', $user->id)
+            ->exists();
 
         if (! $ownsAccount || ! $categoryExists) {
             throw ValidationException::withMessages([

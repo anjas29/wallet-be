@@ -1,5 +1,7 @@
 # Push Changes — `POST /api/v1/sync/push`
 
+_Version **1.1.0** — 2026-07-24 · see [Changelog](#changelog)_
+
 The single write path for wallet data (offline-first, batch). GET endpoints are read-only.
 
 - **Auth:** `Authorization: Bearer <access_token>` (+ `Content-Type: application/json`, `Accept: application/json`).
@@ -24,10 +26,11 @@ The single write path for wallet data (offline-first, batch). GET endpoints are 
 | `transfer` | ✓ | ✓ | ✓ |
 | `account` | ✓ | ✓ | ✓ |
 | `user_currency` | ✓ | ✓ | ✗ |
+| `user_category` | ✓ | ✓ | ✓ |
 | `liability` | ✓ | ✓ | ✓ |
 | `liability_payment` | ✓ | ✓ | ✓ |
 
-`currency` and `category` are global reference data — not writable here.
+`currency` and `category` are global reference data — not writable here. User-owned categories are written via `user_category` (the mobile client seeds these from the global `category` list, then users can add their own). _(`user_category` added v1.1.0.)_
 
 ## Response
 
@@ -117,7 +120,7 @@ The single write path for wallet data (offline-first, batch). GET endpoints are 
 ## transaction
 
 A transaction is always in its account's currency (no `currency_id`). `type`: `income` | `expense`.
-Required: `account_id`, `category_id`, `type`, `amount`, `transaction_date`. Optional: `exchange_rate_to_anchor` (default `1`), `description`.
+Required: `account_id`, `category_id`, `type`, `amount`, `transaction_date`. Optional: `exchange_rate_to_anchor` (default `1`), `description`. As of v1.1.0, `category_id` must be a **`user_category` you own** (not a global `category`).
 
 **create**
 ```
@@ -299,6 +302,52 @@ Your currency holdings. **No delete.** Required: `currency_id`. Optional: `excha
 }
 ```
 
+## user_category
+
+Your own categories (seeded client-side from the global `GET /categories` list, plus any you add). `type`: `income` | `expense`. Required: `name`, `type`, `icon`. Optional: `color` (`#RRGGBB`). Transactions reference a `user_category` you own via `category_id`. _(Added v1.1.0.)_
+
+**create**
+```
+{
+  "client_change_id": "c7",
+  "entity": "user_category",
+  "op": "create",
+  "id": "01UT00000000000000000UT01",
+  "data": {
+    "name": "Groceries",
+    "type": "expense",
+    "icon": "shopping-basket",
+    "color": "#D81B60"
+  }
+}
+```
+
+**update**
+```
+{
+  "client_change_id": "c7",
+  "entity": "user_category",
+  "op": "update",
+  "id": "01UT00000000000000000UT01",
+  "data": {
+    "name": "Groceries & Household",
+    "type": "expense",
+    "icon": "shopping-basket",
+    "color": "#D81B60"
+  }
+}
+```
+
+**delete**
+```
+{
+  "client_change_id": "c7",
+  "entity": "user_category",
+  "op": "delete",
+  "id": "01UT00000000000000000UT01"
+}
+```
+
 ## liability
 
 `type`: `loan` | `credit_card` | `personal`. Required: `user_currency_id`, `name`, `type`, `principal_amount`. Optional: `interest_rate`, `due_date`, `notes`, `is_settled` (default `false`).
@@ -396,3 +445,10 @@ A payment against a liability, from one of your accounts (ownership is via the p
   "id": "01LP00000000000000000LP01"
 }
 ```
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-07-24) — Added the `user_category` entity (create/update/delete). Transaction `category_id` must now reference a `user_category` you own rather than a global `category`.
+- **1.0.0** — Initial push-changes contract.
