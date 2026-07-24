@@ -642,4 +642,14 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonCount(1, 'data.user_categories')
             ->assertJsonPath('data.user_categories.0.id', $categoryId);
     }
+
+    public function test_global_reference_endpoints_are_public(): void
+    {
+        // No Authorization header — currencies and categories are open reference data.
+        $this->getJson('/api/v1/currencies')->assertStatus(200)->assertJsonPath('success', true);
+        $this->getJson('/api/v1/categories')->assertStatus(200)->assertJsonPath('success', true);
+
+        // A protected endpoint still rejects anonymous access.
+        $this->getJson('/api/v1/accounts')->assertStatus(401);
+    }
 }
