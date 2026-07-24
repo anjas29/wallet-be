@@ -265,8 +265,9 @@ class AuthAndSyncTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('categories')->insert([
+        DB::table('user_categories')->insert([
             'id' => $categoryId,
+            'user_id' => $user->id,
             'name' => 'Groceries',
             'type' => 'expense',
             'icon' => 'basket',
@@ -549,5 +550,106 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonCount(1, 'data.accounts')
             ->assertJsonPath('data.accounts.0.id', $accountId)
             ->assertJsonPath('data.accounts.0.deleted_at', fn ($v) => $v !== null);
+    }
+
+    public function test_sync_push_creates_user_category_and_transaction_rejects_foreign_category(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $currencyId = (string) Str::ulid();
+        $userCurrencyId = (string) Str::ulid();
+        $accountId = (string) Str::ulid();
+        $categoryId = (string) Str::ulid();
+        $transactionId = (string) Str::ulid();
+
+        DB::table('currencies')->insert([
+            'id' => $currencyId, 'code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$',
+            'decimal_places' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('user_currencies')->insert([
+            'id' => $userCurrencyId, 'user_id' => $user->id, 'currency_id' => $currencyId,
+            'exchange_rate' => 1, 'is_anchor' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('accounts')->insert([
+            'id' => $accountId, 'user_id' => $user->id, 'user_currency_id' => $userCurrencyId,
+            'name' => 'Cash', 'type' => 'cash', 'initial_balance' => '0', 'is_default' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // A category owned by a different user — must not be usable by this user.
+        $otherUser = User::factory()->create();
+        $foreignCategoryId = (string) Str::ulid();
+        DB::table('user_categories')->insert([
+            'id' => $foreignCategoryId, 'user_id' => $otherUser->id, 'name' => 'Theirs',
+            'type' => 'expense', 'icon' => 'lock', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Push a user_category the client seeded, plus a transaction referencing it, plus one
+        // referencing the foreign category (which must fail).
+        $payload = [
+            'changes' => [
+                [
+                    'client_change_id' => 'uc1',
+                    'entity' => 'user_category',
+                    'op' => 'create',
+                    'id' => $categoryId,
+                    'data' => ['name' => 'Groceries', 'type' => 'expense', 'icon' => 'basket', 'color' => '#ff0000'],
+                ],
+                [
+                    'client_change_id' => 'tx-ok',
+                    'entity' => 'transaction',
+                    'op' => 'create',
+                    'id' => $transactionId,
+                    'data' => [
+                        'account_id' => $accountId,
+                        'category_id' => $categoryId,
+                        'type' => 'expense',
+                        'amount' => '4.25',
+                        'transaction_date' => '2026-07-23',
+                    ],
+                ],
+                [
+                    'client_change_id' => 'tx-bad',
+                    'entity' => 'transaction',
+                    'op' => 'create',
+                    'id' => (string) Str::ulid(),
+                    'data' => [
+                        'account_id' => $accountId,
+                        'category_id' => $foreignCategoryId,
+                        'type' => 'expense',
+                        'amount' => '1.00',
+                        'transaction_date' => '2026-07-23',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/sync/push', $payload)
+            ->assertStatus(200)
+            ->assertJsonPath('data.results.0.status', 'applied')
+            ->assertJsonPath('data.results.1.status', 'applied')
+            ->assertJsonPath('data.results.2.status', 'failed');
+
+        $this->assertDatabaseHas('user_categories', ['id' => $categoryId, 'user_id' => $user->id]);
+        $this->assertDatabaseHas('transactions', ['id' => $transactionId, 'category_id' => $categoryId]);
+
+        // Pull returns the user's own categories (not the other user's).
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/sync/pull')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data.user_categories')
+            ->assertJsonPath('data.user_categories.0.id', $categoryId);
+    }
+
+    public function test_global_reference_endpoints_are_public(): void
+    {
+        // No Authorization header — currencies and categories are open reference data.
+        $this->getJson('/api/v1/currencies')->assertStatus(200)->assertJsonPath('success', true);
+        $this->getJson('/api/v1/categories')->assertStatus(200)->assertJsonPath('success', true);
+
+        // A protected endpoint still rejects anonymous access.
+        $this->getJson('/api/v1/accounts')->assertStatus(401);
     }
 }

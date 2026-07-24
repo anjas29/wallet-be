@@ -141,10 +141,12 @@ class SyncPushController extends Controller
      * | `transfer` | ✓ | ✓ | ✓ |
      * | `account` | ✓ | ✓ | ✓ |
      * | `user_currency` | ✓ | ✓ | — (delete not supported) |
+     * | `user_category` | ✓ | ✓ | ✓ |
      * | `liability` | ✓ | ✓ | ✓ |
      * | `liability_payment` | ✓ | ✓ | ✓ (owned via its parent liability) |
      *
-     * `currency` and `category` are global reference data and are **not** writable here.
+     * `currency` and `category` are global reference data and are **not** writable here — user-owned
+     * categories are written via `user_category` (the mobile client seeds these from the global list).
      *
      * ### `data` fields per entity (create/update)
      *
@@ -156,6 +158,7 @@ class SyncPushController extends Controller
      * - **account**: `user_currency_id`, `name`, `notes?`, `type` (`bank_account`|`cash`|`credit_card`|`savings`), `color?`,
      *   `initial_balance`, `is_default`.
      * - **user_currency**: `currency_id`, `exchange_rate`, `is_anchor`.
+     * - **user_category**: `name`, `type` (`income`|`expense`), `icon`, `color?`.
      * - **liability**: `user_currency_id`, `name`, `type` (`loan`|`credit_card`|`personal`),
      *   `principal_amount`, `interest_rate?`, `due_date?`, `notes?`, `is_settled`.
      * - **liability_payment**: `liability_id`, `account_id`, `amount`, `payment_date`, `note?`.

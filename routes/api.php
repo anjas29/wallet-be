@@ -16,16 +16,19 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
+    // Global reference data — public (no auth). Non-sensitive lists the app needs
+    // before login (e.g. to seed pickers / user categories from the templates).
+    Route::get('/currencies', [MiscController::class, 'currencies']);
+    Route::get('/currencies/{id}', [MiscController::class, 'showCurrency']);
+    Route::get('/categories', [MiscController::class, 'categories']);
+    Route::get('/categories/{id}', [MiscController::class, 'showCategory']);
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/logout-all', [AuthController::class, 'logoutAll']);
         Route::get('/auth/profile', [AuthController::class, 'profile']);
-
-        // Global reference data
-        Route::get('/currencies', [MiscController::class, 'currencies']);
-        Route::get('/currencies/{id}', [MiscController::class, 'showCurrency']);
-        Route::get('/categories', [MiscController::class, 'categories']);
-        Route::get('/categories/{id}', [MiscController::class, 'showCategory']);
+        Route::post('/auth/profile/avatar', [AuthController::class, 'uploadAvatar']);
+        Route::delete('/auth/profile/avatar', [AuthController::class, 'deleteAvatar']);
 
         // The user's currency holdings
         Route::get('/user-currencies', [CurrencyController::class, 'index']);
