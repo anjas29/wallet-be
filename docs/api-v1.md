@@ -1,6 +1,6 @@
 # Wallet API v1 — Implementation Reference
 
-_Version **1.1.0** — 2026-07-24 · see [Changelog](#5-changelog)_
+_Version **1.2.0** — 2026-07-24 · see [Changelog](#5-changelog)_
 
 Base URL: `/api/v1`
 
@@ -30,6 +30,7 @@ Response `201`:
     "email": "string",
     "role": "super_admin | user",
     "avatar_path": "string | null",
+    "avatar_url": "string (URL) | null",
     "created_at": "string (ISO-8601)",
     "updated_at": "string (ISO-8601)"
   },
@@ -57,7 +58,7 @@ Response `200`:
 
 ```json
 {
-  "user": { "id": "string (ULID)", "name": "string", "email": "string", "role": "super_admin | user", "avatar_path": "string | null" },
+  "user": { "id": "string (ULID)", "name": "string", "email": "string", "role": "super_admin | user", "avatar_path": "string | null", "avatar_url": "string (URL) | null" },
   "token": "string"
 }
 ```
@@ -85,11 +86,25 @@ Response `200`:
     "email": "string",
     "role": "super_admin | user",
     "avatar_path": "string | null",
+    "avatar_url": "string (URL) | null",
     "created_at": "string (ISO-8601)",
     "updated_at": "string (ISO-8601)"
   }
 }
 ```
+
+### `POST /api/v1/auth/profile/avatar`
+Authenticated only. Upload or replace the profile picture. **`multipart/form-data`** with an `avatar` file field.
+
+- Validation: `image`, `mimes:jpg,jpeg,png,webp`, `max:2048` (KB).
+- Stored on the `s3` disk under `avatars/{user_id}/{random}.{ext}` (public-read). Replacing deletes the previous object.
+
+Response `200`: the standard envelope with `data.user` (including the new `avatar_path` / `avatar_url`).
+
+### `DELETE /api/v1/auth/profile/avatar`
+Authenticated only. Removes the S3 object and clears `avatar_path`.
+
+Response `200`: `data.user` with `avatar_path` / `avatar_url` = `null`.
 
 ---
 
@@ -438,11 +453,27 @@ Response `200`:
 ## 4. Notes
 - Monetary values are sent and returned as strings to preserve precision.
 - The API currently supports the core wallet workflow and does not implement transaction attachment upload/download yet.
+- **Avatar storage (S3):** avatars use the `s3` disk regardless of `FILESYSTEM_DISK`. Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET` (all scaffolded in `.env.example`). Requires the `league/flysystem-aws-s3-v3` package. For the public `avatar_url` to be readable, grant public GET on the `avatars/*` prefix via a bucket policy:
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/avatars/*"
+    }]
+  }
+  ```
+  and adjust the bucket's "Block Public Access" so bucket-policy public access is allowed. The app IAM user needs `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on `arn:aws:s3:::YOUR_BUCKET/*`.
 
 ---
 
 ## 5. Changelog
 
+- **1.2.0** (2026-07-24)
+  - Added `POST`/`DELETE /auth/profile/avatar` for profile-picture upload/removal (S3, public-read).
+  - Added `avatar_url` (public URL derived from `avatar_path`) to the user object.
 - **1.1.0** (2026-07-24)
   - Added `avatar_path` to the user object in register/login/profile responses.
   - Added the `user_category` sync entity (pushable) and its `user_categories` sync-pull collection; documented the user-category object shape.

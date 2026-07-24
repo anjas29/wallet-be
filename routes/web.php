@@ -67,3 +67,15 @@ Route::get('/docs/android-room-schema', function () {
         'content' => Str::markdown(file_get_contents($path)),
     ]);
 })->name('docs.android-room-schema');
+
+// Hand-written API v1 implementation reference (complements the generated Scramble docs at /docs/api).
+Route::get('/docs/api-v1', function () {
+    $path = base_path('docs/api-v1.md');
+
+    abort_unless(is_file($path), 404);
+
+    return view('docs.page', [
+        'title' => 'Wallet API v1 — Reference',
+        'content' => Str::markdown(file_get_contents($path)),
+    ]);
+})->name('docs.api-v1');

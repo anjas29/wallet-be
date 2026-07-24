@@ -9,6 +9,7 @@ use App\Services\AuthTokenService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -130,6 +131,56 @@ class AuthController extends Controller
         return $this->success([
             'user' => new UserResource($request->user()),
         ]);
+    }
+
+    /**
+     * Upload profile picture
+     *
+     * Store or replace the authenticated user's avatar on the S3 disk and return the updated user.
+     * Send as `multipart/form-data` with an `avatar` file field.
+     */
+    public function uploadAvatar(Request $request)
+    {
+        $request->validate([
+            'avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $user = $request->user();
+        $previous = $user->avatar_path;
+
+        // Store under a per-user prefix; storage generates a random name. Public read is granted
+        // by the bucket policy on `avatars/*` (no per-object ACL, so this works with ACLs disabled).
+        $path = $request->file('avatar')->store("avatars/{$user->id}", 's3');
+
+        $user->update(['avatar_path' => $path]);
+
+        // Remove the old object only after the new one is committed.
+        if ($previous && $previous !== $path) {
+            Storage::disk('s3')->delete($previous);
+        }
+
+        return $this->success([
+            'user' => new UserResource($user),
+        ], 'Avatar updated.');
+    }
+
+    /**
+     * Delete profile picture
+     *
+     * Remove the authenticated user's avatar from S3 and clear `avatar_path`.
+     */
+    public function deleteAvatar(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->avatar_path) {
+            Storage::disk('s3')->delete($user->avatar_path);
+            $user->update(['avatar_path' => null]);
+        }
+
+        return $this->success([
+            'user' => new UserResource($user),
+        ], 'Avatar removed.');
     }
 
     /**
