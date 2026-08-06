@@ -2,6 +2,12 @@
 
 Notable changes to the Wallet API and its data model, newest first. The API itself is path-versioned (`/api/v1`); entries below are dated rather than semver-tagged. The authoritative, always-current endpoint reference is the **[Docs API](/docs/api)**.
 
+## 2026-08-06
+
+- **Onboarding flag.** `on_board_required` added to the user object (register/login/profile responses) — computed from whether the account has ever had an account created (`withTrashed`), not a stored column. See [Onboarding & Sync client flow](/docs/onboarding-and-sync-client-flow).
+- **Default category seeding.** Registration now seeds a new user's `user_categories` from the global `categories` template inside the same transaction as account creation.
+- **Update profile.** Added `PUT /api/v1/auth/profile` to update the authenticated user's name.
+
 ## 2026-07-24
 
 - **Profile picture (S3).** Added `POST /api/v1/auth/profile/avatar` and `DELETE /api/v1/auth/profile/avatar` (multipart `avatar`, ≤ 2 MB, `jpg`/`jpeg`/`png`/`webp`). Files are stored on the `s3` disk under `avatars/{user_id}/…` with public read via bucket policy; the user object gains `avatar_path` and a public `avatar_url`.

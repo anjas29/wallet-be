@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Category;
 use App\Models\RefreshToken;
 use App\Models\User;
+use App\Models\UserCategory;
+use Database\Seeders\CategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -26,7 +29,8 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('status_code', 201)
             ->assertJsonPath('data.user.email', 'ada@example.com')
-            ->assertJsonPath('data.user.role', 'user');
+            ->assertJsonPath('data.user.role', 'user')
+            ->assertJsonPath('data.user.on_board_required', true);
 
         // Timestamps are serialized as ISO-8601.
         $this->assertMatchesRegularExpression(
@@ -46,6 +50,35 @@ class AuthAndSyncTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.user.email', 'ada@example.com');
+    }
+
+    public function test_register_seeds_default_categories_from_the_template_catalog(): void
+    {
+        $this->seed(CategorySeeder::class);
+
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Grace',
+            'email' => 'grace@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertStatus(201);
+
+        $user = User::where('email', 'grace@example.com')->firstOrFail();
+        $templates = Category::all();
+
+        $this->assertSame($templates->count(), UserCategory::where('user_id', $user->id)->count());
+
+        foreach ($templates as $template) {
+            $this->assertDatabaseHas('user_categories', [
+                'user_id' => $user->id,
+                'name' => $template->name,
+                'type' => $template->type,
+                'icon' => $template->icon,
+                'color' => $template->color,
+            ]);
+        }
     }
 
     public function test_can_refresh_access_token_and_rotates_the_refresh_token(): void
@@ -168,6 +201,49 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('status_code', 404)
             ->assertJsonPath('message', 'Resource not found.');
+    }
+
+    public function test_on_board_required_flips_to_false_once_first_account_exists_and_stays_false(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        // Before any account exists: onboarding is required, on every login (e.g. a second device).
+        $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', true);
+
+        $currencyId = (string) Str::ulid();
+        DB::table('currencies')->insert([
+            'id' => $currencyId, 'code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$',
+            'decimal_places' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $userCurrencyId = (string) Str::ulid();
+        DB::table('user_currencies')->insert([
+            'id' => $userCurrencyId, 'user_id' => $user->id, 'currency_id' => $currencyId,
+            'exchange_rate' => 1, 'is_anchor' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $accountId = (string) Str::ulid();
+        DB::table('accounts')->insert([
+            'id' => $accountId, 'user_id' => $user->id, 'user_currency_id' => $userCurrencyId,
+            'name' => 'Checking', 'type' => 'cash', 'initial_balance' => '0', 'is_default' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Flag is account-level server truth: it flips the moment any account exists, independent
+        // of which device/session checks it.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/auth/profile')
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', false);
+
+        // Deleting the (now only) account must not re-trigger onboarding UI.
+        DB::table('accounts')->where('id', $accountId)->update(['deleted_at' => now()]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/auth/profile')
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', false);
     }
 
     public function test_can_create_user_currency_and_account_via_rest(): void

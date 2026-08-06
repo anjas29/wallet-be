@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Models\User;
 use App\Models\UserCategory;
 use App\Services\Concerns\DeltaSyncQuery;
 use App\Services\Concerns\PersistsEntities;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class UserCategoryService
@@ -54,5 +56,23 @@ class UserCategoryService
     public function delete(User $user, string $id): void
     {
         $this->softDeleteEntity(UserCategory::class, $id, $user->id);
+    }
+
+    /**
+     * Seed a new user's categories from the global template catalog.
+     */
+    public function seedDefaults(User $user): void
+    {
+        DB::transaction(function () use ($user): void {
+            foreach (Category::all() as $template) {
+                UserCategory::create([
+                    'user_id' => $user->id,
+                    'name' => $template->name,
+                    'type' => $template->type,
+                    'icon' => $template->icon,
+                    'color' => $template->color,
+                ]);
+            }
+        });
     }
 }
