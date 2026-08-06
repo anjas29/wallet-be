@@ -11,6 +11,7 @@ Everything you need to integrate with the Wallet backend. Base URL: `/api/v1` (a
 - **[Server database schema](/docs/database-schema)** — the authoritative PostgreSQL schema: tables, columns, relationships, and conventions (ULIDs, money, soft deletes, sync cursors).
 - **[Android Room schema](/docs/android-room-schema)** — the offline-first client mirror of the server schema and how it reconciles via sync.
 - **[Push changes (sync)](/docs/push-changes)** — the batch write contract for `POST /api/v1/sync/push`, with per-entity payloads and result semantics.
+- **[Onboarding & initial sync (client flow)](/docs/onboarding-and-sync-client-flow)** — the full client flow consideration for sequencing onboarding UI and initial data sync, covering all branches and interruption paths.
 
 ## Meta
 
