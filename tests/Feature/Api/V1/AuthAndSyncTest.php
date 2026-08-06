@@ -26,7 +26,8 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('status_code', 201)
             ->assertJsonPath('data.user.email', 'ada@example.com')
-            ->assertJsonPath('data.user.role', 'user');
+            ->assertJsonPath('data.user.role', 'user')
+            ->assertJsonPath('data.user.on_board_required', true);
 
         // Timestamps are serialized as ISO-8601.
         $this->assertMatchesRegularExpression(
@@ -168,6 +169,49 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('status_code', 404)
             ->assertJsonPath('message', 'Resource not found.');
+    }
+
+    public function test_on_board_required_flips_to_false_once_first_account_exists_and_stays_false(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        // Before any account exists: onboarding is required, on every login (e.g. a second device).
+        $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', true);
+
+        $currencyId = (string) Str::ulid();
+        DB::table('currencies')->insert([
+            'id' => $currencyId, 'code' => 'USD', 'name' => 'US Dollar', 'symbol' => '$',
+            'decimal_places' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $userCurrencyId = (string) Str::ulid();
+        DB::table('user_currencies')->insert([
+            'id' => $userCurrencyId, 'user_id' => $user->id, 'currency_id' => $currencyId,
+            'exchange_rate' => 1, 'is_anchor' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $accountId = (string) Str::ulid();
+        DB::table('accounts')->insert([
+            'id' => $accountId, 'user_id' => $user->id, 'user_currency_id' => $userCurrencyId,
+            'name' => 'Checking', 'type' => 'cash', 'initial_balance' => '0', 'is_default' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Flag is account-level server truth: it flips the moment any account exists, independent
+        // of which device/session checks it.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/auth/profile')
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', false);
+
+        // Deleting the (now only) account must not re-trigger onboarding UI.
+        DB::table('accounts')->where('id', $accountId)->update(['deleted_at' => now()]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/auth/profile')
+            ->assertStatus(200)
+            ->assertJsonPath('data.user.on_board_required', false);
     }
 
     public function test_can_create_user_currency_and_account_via_rest(): void

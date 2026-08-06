@@ -20,6 +20,7 @@ class UserResource extends JsonResource
             'role' => $this->role,
             'avatar_path' => $this->avatar_path,
             'avatar_url' => $this->avatar_path ? Storage::disk('s3')->url($this->avatar_path) : null,
+            'on_board_required' => $this->needsOnboarding(),
             'email_verified_at' => $this->email_verified_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
