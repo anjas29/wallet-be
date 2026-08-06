@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\AuthTokenService;
+use App\Services\UserCategoryService;
 use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -16,7 +18,10 @@ use Illuminate\Validation\Rules\Password;
 #[Group('Authentication', weight: 1)]
 class AuthController extends Controller
 {
-    public function __construct(private AuthTokenService $tokens) {}
+    public function __construct(
+        private AuthTokenService $tokens,
+        private UserCategoryService $userCategories,
+    ) {}
 
     /**
      * Register
@@ -31,11 +36,17 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::defaults()],
         ]);
 
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
-        ]);
+        $user = DB::transaction(function () use ($data): User {
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['password']),
+            ]);
+
+            $this->userCategories->seedDefaults($user);
+
+            return $user;
+        });
 
         // Reload so database-assigned defaults (e.g. role) are reflected in the response.
         $user->refresh();
@@ -131,6 +142,25 @@ class AuthController extends Controller
         return $this->success([
             'user' => new UserResource($request->user()),
         ]);
+    }
+
+    /**
+     * Update profile
+     *
+     * Update the authenticated user's name.
+     */
+    public function updateProfile(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user();
+        $user->update(['name' => $data['name']]);
+
+        return $this->success([
+            'user' => new UserResource($user),
+        ], 'Profile updated.');
     }
 
     /**

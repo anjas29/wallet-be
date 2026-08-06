@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Category;
 use App\Models\RefreshToken;
 use App\Models\User;
+use App\Models\UserCategory;
+use Database\Seeders\CategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -47,6 +50,35 @@ class AuthAndSyncTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.user.email', 'ada@example.com');
+    }
+
+    public function test_register_seeds_default_categories_from_the_template_catalog(): void
+    {
+        $this->seed(CategorySeeder::class);
+
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Grace',
+            'email' => 'grace@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertStatus(201);
+
+        $user = User::where('email', 'grace@example.com')->firstOrFail();
+        $templates = Category::all();
+
+        $this->assertSame($templates->count(), UserCategory::where('user_id', $user->id)->count());
+
+        foreach ($templates as $template) {
+            $this->assertDatabaseHas('user_categories', [
+                'user_id' => $user->id,
+                'name' => $template->name,
+                'type' => $template->type,
+                'icon' => $template->icon,
+                'color' => $template->color,
+            ]);
+        }
     }
 
     public function test_can_refresh_access_token_and_rotates_the_refresh_token(): void
