@@ -157,15 +157,156 @@ Auth, sync, and Laravel scaffolding — not detailed here:
 
 ## Relationship overview
 
-```
-users ──┬──< user_currencies >── currencies
-        ├──< user_categories
-        ├──< accounts (user_currency_id → user_currencies)
-        ├──< transactions (account_id → accounts, category_id → user_categories)
-        └──< transfers (from_account_id, to_account_id → accounts)
+```mermaid
+erDiagram
+    users {
+        ulid id PK
+        string name
+        string email UK
+        string password
+        enum role
+        string avatar_path
+        timestamp email_verified_at
+    }
+    currencies {
+        ulid id PK
+        string code UK
+        string name
+        string symbol
+        tinyint decimal_places
+    }
+    user_currencies {
+        ulid id PK
+        ulid user_id FK
+        ulid currency_id FK
+        decimal exchange_rate
+        bool is_anchor
+    }
+    categories {
+        ulid id PK
+        string name
+        enum type
+        string icon
+        string color
+    }
+    user_categories {
+        ulid id PK
+        ulid user_id FK
+        string name
+        enum type
+        string icon
+        string color
+    }
+    accounts {
+        ulid id PK
+        ulid user_id FK
+        ulid user_currency_id FK
+        string name
+        text notes
+        enum type
+        decimal initial_balance
+        bool is_default
+        string color
+    }
+    transactions {
+        ulid id PK
+        ulid user_id FK
+        ulid account_id FK
+        ulid category_id FK
+        decimal exchange_rate_to_anchor
+        enum type
+        decimal amount
+        date transaction_date
+    }
+    transfers {
+        ulid id PK
+        ulid user_id FK
+        ulid from_account_id FK
+        ulid to_account_id FK
+        decimal from_amount
+        decimal to_amount
+        decimal exchange_rate
+        decimal fee
+        date transfer_date
+    }
+    liabilities {
+        ulid id PK
+        ulid user_id FK
+        ulid user_currency_id FK
+        string name
+        enum type
+        decimal principal_amount
+        decimal interest_rate
+        date due_date
+        bool is_settled
+    }
+    liability_payments {
+        ulid id PK
+        ulid liability_id FK
+        ulid account_id FK
+        decimal amount
+        date payment_date
+        text note
+    }
+    transaction_attachments {
+        ulid id PK
+        ulid transaction_id FK
+        string disk
+        string file_path
+        string file_name
+        string mime_type
+        int file_size
+    }
+    refresh_tokens {
+        ulid id PK
+        ulid user_id FK
+        ulid family_id
+        string token_hash UK
+        string device_id
+        string device_name
+        timestamp expires_at
+        timestamp revoked_at
+    }
+    device_syncs {
+        ulid id PK
+        ulid user_id FK
+        string device_id
+        timestamp last_synced_at
+    }
+    sessions {
+        string id PK
+        ulid user_id
+    }
+    personal_access_tokens {
+        bigint id PK
+        string tokenable_type
+        ulid tokenable_id
+        string token UK
+    }
 
-categories (global reference) ──▷ seeds → user_categories ──< transactions
+    users ||--o{ user_currencies : "owns (cascade)"
+    currencies ||--o{ user_currencies : "priced in (restrict)"
+    users ||--o{ user_categories : "owns (cascade)"
+    users ||--o{ accounts : "owns (cascade)"
+    user_currencies ||--o{ accounts : "denominates (restrict)"
+    users ||--o{ transactions : "owns (cascade)"
+    accounts ||--o{ transactions : "posted to (restrict)"
+    user_categories ||--o{ transactions : "categorized as (restrict)"
+    users ||--o{ transfers : "owns (cascade)"
+    accounts ||--o{ transfers : "debits from (restrict)"
+    accounts ||--o{ transfers : "credits to (restrict)"
+    users ||--o{ liabilities : "owns (cascade)"
+    user_currencies ||--o{ liabilities : "denominates (restrict)"
+    liabilities ||--o{ liability_payments : "paid via (cascade)"
+    accounts ||--o{ liability_payments : "debited by (restrict)"
+    transactions ||--o{ transaction_attachments : "attached to (cascade)"
+    users ||--o{ refresh_tokens : "authenticates (cascade)"
+    users ||--o{ device_syncs : "syncs as (cascade)"
+    users ||..o{ sessions : "no FK constraint"
+    users ||..o{ personal_access_tokens : "polymorphic tokenable"
 ```
+
+Dashed lines (`..`) mark relationships with no real DB-level FK constraint: `sessions.user_id` is an indexed column only (never wrapped in `->constrained()`), and `personal_access_tokens` links back via Sanctum's polymorphic `tokenable` morph, not a typed FK. `categories` is intentionally left disconnected — no table holds an FK to it anymore since v1.1.0 (see above).
 
 For how these tables are mirrored client-side and reconciled, see the **[Android Room schema](/docs/android-room-schema)** and the **[Push Changes guide](/docs/push-changes)**.
 

@@ -431,6 +431,64 @@ class AuthAndSyncTest extends TestCase
             ->assertJsonPath('data.items.0.currency_id', $currencyId);
     }
 
+    public function test_sync_push_can_partially_update_user_currency_without_resending_currency_id(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $currencyId = (string) Str::ulid();
+        $userCurrencyId = (string) Str::ulid();
+
+        DB::table('currencies')->insert([
+            'id' => $currencyId,
+            'code' => 'CNY',
+            'name' => 'Chinese Yuan',
+            'symbol' => '¥',
+            'decimal_places' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('user_currencies')->insert([
+            'id' => $userCurrencyId,
+            'user_id' => $user->id,
+            'currency_id' => $currencyId,
+            'exchange_rate' => 1,
+            'is_anchor' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payload = [
+            'changes' => [
+                [
+                    'client_change_id' => 'c1',
+                    'entity' => 'user_currency',
+                    'op' => 'update',
+                    'id' => $userCurrencyId,
+                    'data' => [
+                        'exchange_rate' => 0.14814814814814814,
+                        'is_anchor' => false,
+                    ],
+                ],
+            ],
+        ];
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/sync/push', $payload);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.results.0.status', 'applied');
+
+        $this->assertDatabaseHas('user_currencies', [
+            'id' => $userCurrencyId,
+            'user_id' => $user->id,
+            'currency_id' => $currencyId,
+            'is_anchor' => false,
+        ]);
+    }
+
     public function test_read_endpoints_and_sync_support_transfers_and_liability_payments(): void
     {
         $user = User::factory()->create();

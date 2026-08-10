@@ -36,10 +36,18 @@ class UserCurrencyService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): UserCurrency
     {
-        if (! Currency::where('id', $data['currency_id'] ?? null)->exists()) {
-            throw ValidationException::withMessages([
-                'data.currency_id' => ['The selected currency is invalid.'],
-            ]);
+        $payload = ['user_id' => $user->id];
+
+        // currency_id is required on create, but optional on update: an omitted
+        // field means "leave the existing currency untouched", not "invalid".
+        if ($op === 'create' || array_key_exists('currency_id', $data)) {
+            if (! Currency::where('id', $data['currency_id'] ?? null)->exists()) {
+                throw ValidationException::withMessages([
+                    'data.currency_id' => ['The selected currency is invalid.'],
+                ]);
+            }
+
+            $payload['currency_id'] = $data['currency_id'];
         }
 
         $isAnchor = (bool) ($data['is_anchor'] ?? false);
@@ -50,12 +58,10 @@ class UserCurrencyService
                 ->update(['is_anchor' => false]);
         }
 
-        return $this->upsertEntity(UserCurrency::class, $id, $op, [
-            'user_id' => $user->id,
-            'currency_id' => $data['currency_id'],
-            'exchange_rate' => $data['exchange_rate'] ?? '1',
-            'is_anchor' => $isAnchor,
-        ], $user->id);
+        $payload['exchange_rate'] = $data['exchange_rate'] ?? '1';
+        $payload['is_anchor'] = $isAnchor;
+
+        return $this->upsertEntity(UserCurrency::class, $id, $op, $payload, $user->id);
     }
 
     public function delete(User $user, string $id): void

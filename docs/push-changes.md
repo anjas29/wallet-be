@@ -1,6 +1,6 @@
 # Push Changes — `POST /api/v1/sync/push`
 
-_Version **1.1.0** — 2026-07-24 · see [Changelog](#changelog)_
+_Version **1.1.1** — 2026-08-10 · see [Changelog](#changelog)_
 
 The single write path for wallet data (offline-first, batch). GET endpoints are read-only.
 
@@ -222,7 +222,7 @@ Move money between two of your accounts. Required: `from_account_id`, `to_accoun
 
 ## account
 
-`type`: `cash` | `bank` | `e_wallet` | `other`. Required: `user_currency_id`, `name`, `type`. Optional: `color` (`#RRGGBB`, default `#64748B`), `initial_balance` (default `0`), `is_default` (default `false`). Setting `is_default` unsets it on your other accounts.
+`type`: `bank_account` | `cash` | `credit_card` | `savings`. Required: `user_currency_id`, `name`, `type`. Optional: `color` (`#RRGGBB`, default `#64748B`), `initial_balance` (default `0`), `is_default` (default `false`). Setting `is_default` unsets it on your other accounts.
 
 **create**
 ```
@@ -234,7 +234,7 @@ Move money between two of your accounts. Required: `from_account_id`, `to_accoun
   "data": {
     "user_currency_id": "01UC00000000000000000UC01",
     "name": "Savings",
-    "type": "bank",
+    "type": "bank_account",
     "color": "#22C55E",
     "initial_balance": "0",
     "is_default": false
@@ -252,7 +252,7 @@ Move money between two of your accounts. Required: `from_account_id`, `to_accoun
   "data": {
     "user_currency_id": "01UC00000000000000000UC01",
     "name": "Savings (main)",
-    "type": "bank",
+    "type": "bank_account",
     "is_default": true
   }
 }
@@ -450,5 +450,6 @@ A payment against a liability, from one of your accounts (ownership is via the p
 
 ## Changelog
 
+- **1.1.1** (2026-08-10) — Corrected the `account` `type` enum, which had never matched the backend: it is `bank_account` | `cash` | `credit_card` | `savings`, not `cash` | `bank` | `e_wallet` | `other`. This was a doc-only fix; the backend behavior is unchanged. Any old value other than `cash` sent to `POST /api/v1/sync/push` was already rejected by the database.
 - **1.1.0** (2026-07-24) — Added the `user_category` entity (create/update/delete). Transaction `category_id` must now reference a `user_category` you own rather than a global `category`.
 - **1.0.0** — Initial push-changes contract.
