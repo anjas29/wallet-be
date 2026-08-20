@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\LiabilityController;
 use App\Http\Controllers\Api\V1\MiscController;
+use App\Http\Controllers\Api\V1\ReceiptController;
 use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
@@ -56,6 +57,9 @@ Route::prefix('v1')->group(function () {
         // Offline-first sync: batch read (pull) + batch write (push)
         Route::get('/sync/pull', [SyncPullController::class, 'index']);
         Route::post('/sync/push', [SyncPushController::class, 'store']);
+
+        // Receipt scanning (Gemini Developer API)
+        Route::post('/receipts/scan', [ReceiptController::class, 'scan']);
     });
 });
 
