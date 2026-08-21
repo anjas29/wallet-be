@@ -2,6 +2,10 @@
 
 Notable changes to the Wallet API and its data model, newest first. The API itself is path-versioned (`/api/v1`); entries below are dated rather than semver-tagged. The authoritative, always-current endpoint reference is the **[Docs API](/docs/api)**.
 
+## 2026-08-21
+
+- **Transaction report (PDF, S3).** Added `GET /api/v1/reports/transactions` (`period` query param: `yyyy-mm`, `yyyy`, or omitted for all-time). Generates a PDF statement covering every account — opening/closing balance, a chronological ledger merging `transactions` and `transfers` with a running balance, per-account totals, and an overall net-change summary converted to the user's anchor currency. Uploads to a private `reports/{user_id}/…` path on the `s3` disk and returns a 60-minute temporary signed `url`. `liability_payments` are not included. Synchronous — the request blocks until the PDF is built and uploaded.
+
 ## 2026-08-20
 
 - **Receipt scanning (Gemini).** Added `POST /api/v1/receipts/scan` (multipart `receipt`, ≤ 5 MB, `jpg`/`png`/`webp`). Sends the photo to the Gemini Developer API (`generateContent`, structured `responseSchema`) and returns `is_valid`, `merchant_name`, `transaction_date`, `total_amount`, `currency_code`, and a line-item breakdown. Each item's `category_id`/`category_name` is constrained to the authenticated user's own `user_categories` (schema enum + prompt-supplied id→name list, so the model can't hallucinate a category). `currency_code` is detected from the receipt and cross-checked against the `currencies` table, falling back to `null` when unrecognized or unclear. Requires `GEMINI_API_KEY` (and optional `GEMINI_MODEL`, default `gemini-3.6-flash`) in `.env`; upstream failures surface as a `502`, a user with no categories yet gets a `422`.
