@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\LiabilityController;
 use App\Http\Controllers\Api\V1\MiscController;
 use App\Http\Controllers\Api\V1\ReceiptController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
@@ -47,6 +48,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/transactions/{id}', [TransactionController::class, 'show']);
         Route::get('/transfers', [TransactionController::class, 'transfers']);
         Route::get('/transfers/{id}', [TransactionController::class, 'showTransfer']);
+
+        // Reports
+        Route::get('/reports/transactions', [ReportController::class, 'transactions']);
 
         // Liabilities + payments
         Route::get('/liabilities', [LiabilityController::class, 'index']);
