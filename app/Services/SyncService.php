@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\Resources\AccountResource;
+use App\Http\Resources\AiConversationResource;
 use App\Http\Resources\BudgetResource;
 use App\Http\Resources\LiabilityPaymentResource;
 use App\Http\Resources\LiabilityResource;
@@ -16,7 +17,7 @@ use Illuminate\Validation\ValidationException;
 
 class SyncService
 {
-    private const ENTITIES = ['account', 'transaction', 'user_currency', 'user_category', 'transfer', 'liability', 'liability_payment', 'budget', 'recurring_transaction'];
+    private const ENTITIES = ['account', 'transaction', 'user_currency', 'user_category', 'transfer', 'liability', 'liability_payment', 'budget', 'recurring_transaction', 'ai_conversation'];
 
     private const OPS = ['create', 'update', 'delete'];
 
@@ -30,6 +31,7 @@ class SyncService
         private LiabilityPaymentService $liabilityPayments,
         private BudgetService $budgets,
         private RecurringTransactionService $recurringTransactions,
+        private AiConversationService $aiConversations,
     ) {}
 
     /**
@@ -105,6 +107,9 @@ class SyncService
             'liability_payment' => [$this->liabilityPayments, LiabilityPaymentResource::class],
             'budget' => [$this->budgets, BudgetResource::class],
             'recurring_transaction' => [$this->recurringTransactions, RecurringTransactionResource::class],
+            // Push accepts title updates and deletes only; the service refuses 'create',
+            // since a conversation originates from POST /ai/chat.
+            'ai_conversation' => [$this->aiConversations, AiConversationResource::class],
         };
     }
 

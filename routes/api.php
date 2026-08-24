@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountController;
+use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BudgetController;
 use App\Http\Controllers\Api\V1\CurrencyController;
@@ -74,6 +75,16 @@ Route::prefix('v1')->group(function () {
 
         // Receipt scanning (Gemini Developer API)
         Route::post('/receipts/scan', [ReceiptController::class, 'scan']);
+
+        // AI analyst: read-only financial chat. POST /ai/chat streams Server-Sent Events
+        // rather than the usual JSON envelope, and is throttled because each turn costs an
+        // upstream call and holds the connection open for its duration.
+        Route::prefix('ai')->group(function () {
+            Route::post('/chat', [AiChatController::class, 'chat'])->middleware('throttle:20,1');
+            Route::get('/conversations', [AiChatController::class, 'index']);
+            Route::get('/conversations/{id}', [AiChatController::class, 'show']);
+            Route::delete('/conversations/{id}', [AiChatController::class, 'destroy']);
+        });
     });
 });
 
