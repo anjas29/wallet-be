@@ -4,19 +4,23 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AccountResource;
+use App\Http\Resources\BudgetResource;
 use App\Http\Resources\CategoryResource;
 use App\Http\Resources\CurrencyResource;
 use App\Http\Resources\LiabilityPaymentResource;
 use App\Http\Resources\LiabilityResource;
+use App\Http\Resources\RecurringTransactionResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\TransferResource;
 use App\Http\Resources\UserCategoryResource;
 use App\Http\Resources\UserCurrencyResource;
 use App\Services\AccountService;
+use App\Services\BudgetService;
 use App\Services\CategoryService;
 use App\Services\CurrencyService;
 use App\Services\LiabilityPaymentService;
 use App\Services\LiabilityService;
+use App\Services\RecurringTransactionService;
 use App\Services\TransactionService;
 use App\Services\TransferService;
 use App\Services\UserCategoryService;
@@ -38,6 +42,8 @@ class SyncPullController extends Controller
         private TransferService $transfers,
         private LiabilityService $liabilities,
         private LiabilityPaymentService $liabilityPayments,
+        private BudgetService $budgets,
+        private RecurringTransactionService $recurringTransactions,
     ) {}
 
     /**
@@ -74,6 +80,8 @@ class SyncPullController extends Controller
             'transfers' => TransferResource::collection($this->transfers->list($userId, $since, $limit)),
             'liabilities' => LiabilityResource::collection($this->liabilities->list($userId, $since, $limit)),
             'liability_payments' => LiabilityPaymentResource::collection($this->liabilityPayments->list($userId, $since, $limit)),
+            'budgets' => BudgetResource::collection($this->budgets->list($userId, $since, $limit)),
+            'recurring_transactions' => RecurringTransactionResource::collection($this->recurringTransactions->list($userId, $since, $limit)),
             'server_time' => now()->toISOString(),
         ]);
     }

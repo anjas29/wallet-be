@@ -4,6 +4,8 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Account;
 use App\Models\Currency;
+use App\Models\Liability;
+use App\Models\LiabilityPayment;
 use App\Models\Transaction;
 use App\Models\Transfer;
 use App\Models\User;
@@ -145,6 +147,36 @@ class ReportTest extends TestCase
             'exchange_rate' => 1,
             'fee' => '1.00',
             'transfer_date' => '2026-08-12',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/reports/transactions?period=2026-08')
+            ->assertStatus(200)
+            ->assertJsonPath('success', true);
+
+        Storage::disk('s3')->assertExists('reports/'.$user->id.'/transactions-2026-08.pdf');
+    }
+
+    public function test_it_includes_liability_payments_in_the_ledger(): void
+    {
+        $this->fakeS3();
+        [$user, $token] = $this->authUser();
+        $account = $this->seedAccount($user);
+
+        $liability = Liability::create([
+            'user_id' => $user->id,
+            'user_currency_id' => $account->user_currency_id,
+            'name' => 'Car Loan',
+            'type' => 'loan',
+            'principal_amount' => '1000.00',
+        ]);
+
+        LiabilityPayment::create([
+            'liability_id' => $liability->id,
+            'account_id' => $account->id,
+            'amount' => '75.00',
+            'payment_date' => '2026-08-15',
+            'note' => 'August installment',
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$token)

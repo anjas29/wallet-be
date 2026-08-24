@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Account;
+use App\Models\LiabilityPayment;
 use App\Models\Transaction;
 use App\Models\Transfer;
 use App\Models\User;
@@ -79,7 +80,7 @@ class ReportService
     }
 
     /**
-     * @return array{account: Account, opening: string, closing: string, entries: Collection, totalIncome: float, totalExpense: float, totalTransferIn: float, totalTransferOut: float}
+     * @return array{account: Account, opening: string, closing: string, entries: Collection, totalIncome: float, totalExpense: float, totalTransferIn: float, totalTransferOut: float, totalLiabilityPayment: float}
      */
     private function buildAccountStatement(Account $account, ?Carbon $start, ?Carbon $end): array
     {
@@ -118,7 +119,18 @@ class ReportService
                 'signedAmount' => (float) $transfer->to_amount,
             ]);
 
-        $entries = $transactions->concat($transfersOut)->concat($transfersIn)
+        $liabilityPayments = LiabilityPayment::where('account_id', $account->id)
+            ->with('liability')
+            ->when($start && $end, fn ($query) => $query->whereBetween('payment_date', [$start, $end]))
+            ->get()
+            ->map(fn (LiabilityPayment $payment) => [
+                'date' => $payment->payment_date,
+                'description' => $payment->note ?: ('Payment: '.($payment->liability?->name ?? 'Liability')),
+                'type' => 'liability_payment',
+                'signedAmount' => -(float) $payment->amount,
+            ]);
+
+        $entries = $transactions->concat($transfersOut)->concat($transfersIn)->concat($liabilityPayments)
             ->sortBy('date')
             ->values();
 
@@ -140,6 +152,7 @@ class ReportService
             'totalExpense' => abs($entries->where('type', 'expense')->sum('signedAmount')),
             'totalTransferIn' => $entries->where('type', 'transfer_in')->sum('signedAmount'),
             'totalTransferOut' => abs($entries->where('type', 'transfer_out')->sum('signedAmount')),
+            'totalLiabilityPayment' => abs($entries->where('type', 'liability_payment')->sum('signedAmount')),
         ];
     }
 

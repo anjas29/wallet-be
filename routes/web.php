@@ -33,6 +33,7 @@ $docPages = [
     'database-schema' => ['database-schema.md', 'Server Database Schema'],
     'android-room-schema' => ['android-room-schema.md', 'Android Room Schema'],
     'push-changes' => ['push-changes.md', 'Push Changes'],
+    'sync-changes-1.2.0' => ['sync-changes-1.2.0.md', 'Sync Changes — v1.2.0'],
     'onboarding-and-sync-client-flow' => ['onboarding-and-sync-client-flow.md', 'Onboarding & Sync — Client Flow'],
     'changelog' => ['changelog.md', 'Changelog'],
 ];

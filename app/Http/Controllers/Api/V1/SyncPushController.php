@@ -144,6 +144,8 @@ class SyncPushController extends Controller
      * | `user_category` | ✓ | ✓ | ✓ |
      * | `liability` | ✓ | ✓ | ✓ |
      * | `liability_payment` | ✓ | ✓ | ✓ (owned via its parent liability) |
+     * | `budget` | ✓ | ✓ | ✓ |
+     * | `recurring_transaction` | ✓ | ✓ | ✓ |
      *
      * `currency` and `category` are global reference data and are **not** writable here — user-owned
      * categories are written via `user_category` (the mobile client seeds these from the global list).
@@ -162,6 +164,14 @@ class SyncPushController extends Controller
      * - **liability**: `user_currency_id`, `name`, `type` (`loan`|`credit_card`|`personal`),
      *   `principal_amount`, `interest_rate?`, `due_date?`, `notes?`, `is_settled`.
      * - **liability_payment**: `liability_id`, `account_id`, `amount`, `payment_date`, `note?`.
+     * - **budget**: `category_id` (must be an expense `user_category` you own), `amount`,
+     *   `period_type` (`monthly`|`custom`), `period_start?`/`period_end?` (required, and only
+     *   allowed, when `period_type` is `custom`).
+     * - **recurring_transaction**: `account_id`, `category_id`, `amount`, `description?`,
+     *   `frequency` (`daily`|`weekly`|`monthly`|`yearly`), `start_date`, `end_date?`, `is_active?`
+     *   (default `true`). `next_run_date` is server-computed and read-only — any value sent by
+     *   the client is ignored. Generated transactions flow through the regular `transaction`
+     *   entity, with `type` derived from the category (not client-supplied).
      *
      * ### Result semantics (partial success)
      *

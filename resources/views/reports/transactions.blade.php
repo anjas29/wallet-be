@@ -144,7 +144,8 @@
                         Income: {{ number_format($statement['totalIncome'], 2) }} &bull;
                         Expense: {{ number_format($statement['totalExpense'], 2) }} &bull;
                         Transfers in: {{ number_format($statement['totalTransferIn'], 2) }} &bull;
-                        Transfers out: {{ number_format($statement['totalTransferOut'], 2) }}
+                        Transfers out: {{ number_format($statement['totalTransferOut'], 2) }} &bull;
+                        Liability payments: {{ number_format($statement['totalLiabilityPayment'], 2) }}
                     </td>
                 </tr>
             </tfoot>

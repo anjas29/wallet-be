@@ -2,9 +2,18 @@
 
 Notable changes to the Wallet API and its data model, newest first. The API itself is path-versioned (`/api/v1`); entries below are dated rather than semver-tagged. The authoritative, always-current endpoint reference is the **[Docs API](/docs/api)**.
 
+## 2026-08-24
+
+Full field-by-field detail for this release's sync changes: **[Sync Changes — v1.2.0](/docs/sync-changes-1.2.0)**.
+
+- **Budgets.** New `budget` entity — a spending cap on an expense category, monthly or custom period, with derived `spent`/`remaining`.
+- **Recurring transactions.** New `recurring_transaction` entity — a template that generates real `transaction` rows on a schedule, server-side, so bills post even if the app isn't opened. Requires `schedule:run` wired into the deployment (not yet done).
+- **Liability derived fields.** `liability` reads now include derived `paid_amount` and `remaining_balance`.
+- **Liability payments in the transaction report.** The PDF ledger now includes `liability_payments` (previously excluded — see 2026-08-21 below) plus a `totalLiabilityPayment` total.
+
 ## 2026-08-21
 
-- **Transaction report (PDF, S3).** Added `GET /api/v1/reports/transactions` (`period` query param: `yyyy-mm`, `yyyy`, or omitted for all-time). Generates a PDF statement covering every account — opening/closing balance, a chronological ledger merging `transactions` and `transfers` with a running balance, per-account totals, and an overall net-change summary converted to the user's anchor currency. Uploads to a private `reports/{user_id}/…` path on the `s3` disk and returns a 60-minute temporary signed `url`. `liability_payments` are not included. Synchronous — the request blocks until the PDF is built and uploaded.
+- **Transaction report (PDF, S3).** Added `GET /api/v1/reports/transactions` (`period` query param: `yyyy-mm`, `yyyy`, or omitted for all-time). Generates a PDF statement covering every account — opening/closing balance, a chronological ledger merging `transactions` and `transfers` with a running balance, per-account totals, and an overall net-change summary converted to the user's anchor currency. Uploads to a private `reports/{user_id}/…` path on the `s3` disk and returns a 60-minute temporary signed `url`. Synchronous — the request blocks until the PDF is built and uploaded.
 
 ## 2026-08-20
 
