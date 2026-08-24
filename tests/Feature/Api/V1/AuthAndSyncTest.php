@@ -630,6 +630,22 @@ class AuthAndSyncTest extends TestCase
         $this->assertDatabaseHas('transfers', ['id' => $transferId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('liabilities', ['id' => $liabilityId, 'user_id' => $user->id]);
         $this->assertDatabaseHas('liability_payments', ['id' => $paymentId, 'liability_id' => $liabilityId]);
+
+        // Read endpoints expose a derived paid_amount/remaining_balance (100.00 principal, 10.00 paid).
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/liabilities/'.$liabilityId)
+            ->assertStatus(200)
+            ->assertJsonPath('data.paid_amount', '10.00')
+            ->assertJsonPath('data.remaining_balance', '90.00');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/sync/pull')
+            ->assertStatus(200)
+            ->assertJsonPath('data.liabilities.0.paid_amount', '10.00')
+            ->assertJsonPath('data.liabilities.0.remaining_balance', '90.00');
+
+        // Sync-push write responses omit the derived fields, consistent with account.balance.
+        $this->assertNull($response->json('data.results.1.record.paid_amount'));
     }
 
     public function test_sync_pull_returns_initial_snapshot_and_delta_with_tombstones(): void

@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Http\Resources\AccountResource;
+use App\Http\Resources\BudgetResource;
 use App\Http\Resources\LiabilityPaymentResource;
 use App\Http\Resources\LiabilityResource;
+use App\Http\Resources\RecurringTransactionResource;
 use App\Http\Resources\TransactionResource;
 use App\Http\Resources\TransferResource;
 use App\Http\Resources\UserCategoryResource;
@@ -14,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 
 class SyncService
 {
-    private const ENTITIES = ['account', 'transaction', 'user_currency', 'user_category', 'transfer', 'liability', 'liability_payment'];
+    private const ENTITIES = ['account', 'transaction', 'user_currency', 'user_category', 'transfer', 'liability', 'liability_payment', 'budget', 'recurring_transaction'];
 
     private const OPS = ['create', 'update', 'delete'];
 
@@ -26,6 +28,8 @@ class SyncService
         private TransferService $transfers,
         private LiabilityService $liabilities,
         private LiabilityPaymentService $liabilityPayments,
+        private BudgetService $budgets,
+        private RecurringTransactionService $recurringTransactions,
     ) {}
 
     /**
@@ -99,6 +103,8 @@ class SyncService
             'transfer' => [$this->transfers, TransferResource::class],
             'liability' => [$this->liabilities, LiabilityResource::class],
             'liability_payment' => [$this->liabilityPayments, LiabilityPaymentResource::class],
+            'budget' => [$this->budgets, BudgetResource::class],
+            'recurring_transaction' => [$this->recurringTransactions, RecurringTransactionResource::class],
         };
     }
 

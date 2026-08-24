@@ -25,14 +25,14 @@ class DocsRouteTest extends TestCase
         $response = $this->get('/docs');
 
         $response->assertStatus(200);
-        foreach (['/docs/api', '/docs/database-schema', '/docs/android-room-schema', '/docs/push-changes', '/docs/changelog'] as $link) {
+        foreach (['/docs/api', '/docs/database-schema', '/docs/android-room-schema', '/docs/push-changes', '/docs/sync-changes-1.2.0', '/docs/changelog'] as $link) {
             $response->assertSee('href="'.$link.'"', false);
         }
     }
 
     public function test_docs_guides_and_changelog_render(): void
     {
-        foreach (['/docs/database-schema', '/docs/android-room-schema', '/docs/push-changes', '/docs/changelog'] as $uri) {
+        foreach (['/docs/database-schema', '/docs/android-room-schema', '/docs/push-changes', '/docs/sync-changes-1.2.0', '/docs/changelog'] as $uri) {
             $this->get($uri)->assertStatus(200);
         }
     }

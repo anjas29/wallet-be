@@ -11,6 +11,7 @@ use App\Models\UserCurrency;
 use App\Services\Concerns\DeltaSyncQuery;
 use App\Services\Concerns\PersistsEntities;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -115,13 +116,16 @@ class AccountService
 
     /**
      * @param  list<string>  $accountIds
+     * @param  Carbon|null  $asOf  When given, only movements strictly before this instant are counted
+     *                             (used to compute a report's opening balance for a period).
      * @return array<string, string> account id => balance (2-dp string)
      */
-    public function balancesFor(string $userId, array $accountIds): array
+    public function balancesFor(string $userId, array $accountIds, ?Carbon $asOf = null): array
     {
         $income = Transaction::query()
             ->whereIn('account_id', $accountIds)
             ->where('type', 'income')
+            ->when($asOf, fn ($query) => $query->where('transaction_date', '<', $asOf))
             ->groupBy('account_id')
             ->selectRaw('account_id, SUM(amount) as total')
             ->pluck('total', 'account_id');
@@ -129,24 +133,28 @@ class AccountService
         $expense = Transaction::query()
             ->whereIn('account_id', $accountIds)
             ->where('type', 'expense')
+            ->when($asOf, fn ($query) => $query->where('transaction_date', '<', $asOf))
             ->groupBy('account_id')
             ->selectRaw('account_id, SUM(amount) as total')
             ->pluck('total', 'account_id');
 
         $transfersIn = Transfer::query()
             ->whereIn('to_account_id', $accountIds)
+            ->when($asOf, fn ($query) => $query->where('transfer_date', '<', $asOf))
             ->groupBy('to_account_id')
             ->selectRaw('to_account_id, SUM(to_amount) as total')
             ->pluck('total', 'to_account_id');
 
         $transfersOut = Transfer::query()
             ->whereIn('from_account_id', $accountIds)
+            ->when($asOf, fn ($query) => $query->where('transfer_date', '<', $asOf))
             ->groupBy('from_account_id')
             ->selectRaw('from_account_id, SUM(from_amount + fee) as total')
             ->pluck('total', 'from_account_id');
 
         $payments = LiabilityPayment::query()
             ->whereIn('account_id', $accountIds)
+            ->when($asOf, fn ($query) => $query->where('payment_date', '<', $asOf))
             ->groupBy('account_id')
             ->selectRaw('account_id, SUM(amount) as total')
             ->pluck('total', 'account_id');

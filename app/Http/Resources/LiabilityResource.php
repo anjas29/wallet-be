@@ -19,6 +19,8 @@ class LiabilityResource extends JsonResource
             'name' => $this->name,
             'type' => $this->type,
             'principal_amount' => $this->principal_amount,
+            'paid_amount' => $this->whenNotNull($this->paid_amount),
+            'remaining_balance' => $this->whenNotNull($this->remaining_balance),
             'interest_rate' => $this->interest_rate,
             'due_date' => $this->due_date?->toDateString(),
             'notes' => $this->notes,

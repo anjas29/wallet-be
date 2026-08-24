@@ -2,10 +2,13 @@
 
 use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BudgetController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\LiabilityController;
 use App\Http\Controllers\Api\V1\MiscController;
 use App\Http\Controllers\Api\V1\ReceiptController;
+use App\Http\Controllers\Api\V1\RecurringTransactionController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
@@ -48,11 +51,22 @@ Route::prefix('v1')->group(function () {
         Route::get('/transfers', [TransactionController::class, 'transfers']);
         Route::get('/transfers/{id}', [TransactionController::class, 'showTransfer']);
 
+        // Reports
+        Route::get('/reports/transactions', [ReportController::class, 'transactions']);
+
         // Liabilities + payments
         Route::get('/liabilities', [LiabilityController::class, 'index']);
         Route::get('/liabilities/{id}', [LiabilityController::class, 'show']);
         Route::get('/liability-payments', [LiabilityController::class, 'payments']);
         Route::get('/liability-payments/{id}', [LiabilityController::class, 'showPayment']);
+
+        // Budgets (each resource includes a derived spent/remaining for its resolved period)
+        Route::get('/budgets', [BudgetController::class, 'index']);
+        Route::get('/budgets/{id}', [BudgetController::class, 'show']);
+
+        // Recurring transaction templates (actual Transaction rows are generated server-side)
+        Route::get('/recurring-transactions', [RecurringTransactionController::class, 'index']);
+        Route::get('/recurring-transactions/{id}', [RecurringTransactionController::class, 'show']);
 
         // Offline-first sync: batch read (pull) + batch write (push)
         Route::get('/sync/pull', [SyncPullController::class, 'index']);

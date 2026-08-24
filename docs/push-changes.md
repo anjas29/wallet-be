@@ -1,6 +1,6 @@
 # Push Changes — `POST /api/v1/sync/push`
 
-_Version **1.1.1** — 2026-08-10 · see [Changelog](#changelog)_
+_Version **1.2.0** — 2026-08-24 · see [Changelog](#changelog)_
 
 The single write path for wallet data (offline-first, batch). GET endpoints are read-only.
 
@@ -29,8 +29,10 @@ The single write path for wallet data (offline-first, batch). GET endpoints are 
 | `user_category` | ✓ | ✓ | ✓ |
 | `liability` | ✓ | ✓ | ✓ |
 | `liability_payment` | ✓ | ✓ | ✓ |
+| `budget` | ✓ | ✓ | ✓ |
+| `recurring_transaction` | ✓ | ✓ | ✓ |
 
-`currency` and `category` are global reference data — not writable here. User-owned categories are written via `user_category` (the mobile client seeds these from the global `category` list, then users can add their own). _(`user_category` added v1.1.0.)_
+`currency` and `category` are global reference data — not writable here. User-owned categories are written via `user_category` (the mobile client seeds these from the global `category` list, then users can add their own). _(`user_category` added v1.1.0. `budget` and `recurring_transaction` added v1.2.0.)_
 
 ## Response
 
@@ -350,7 +352,7 @@ Your own categories (seeded client-side from the global `GET /categories` list, 
 
 ## liability
 
-`type`: `loan` | `credit_card` | `personal`. Required: `user_currency_id`, `name`, `type`, `principal_amount`. Optional: `interest_rate`, `due_date`, `notes`, `is_settled` (default `false`).
+`type`: `loan` | `credit_card` | `personal`. Required: `user_currency_id`, `name`, `type`, `principal_amount`. Optional: `interest_rate`, `due_date`, `notes`, `is_settled` (default `false`). As of v1.2.0, read responses (`GET /liabilities`, `GET /liabilities/{id}`, and `GET /sync/pull`) also include derived `paid_amount` (sum of its `liability_payment` rows) and `remaining_balance` (`principal_amount - paid_amount`, floored at `0`). These are not present on `POST /sync/push` create/update responses, consistent with how `account.balance` behaves.
 
 **create**
 ```
@@ -446,10 +448,123 @@ A payment against a liability, from one of your accounts (ownership is via the p
 }
 ```
 
+## budget
+
+Tracks a spending cap against one of your **expense** `user_category` records. `period_type`: `monthly` | `custom`. Required: `category_id`, `amount`, `period_type`. For `custom`, also required: `period_start`, `period_end` (`period_end >= period_start`); for `monthly`, omit both — the period is always "the current calendar month" and is recomputed on every read, not stored. Read responses (`GET /budgets`, sync pull, sync push) include derived `spent`/`remaining` for the resolved period. _(Added v1.2.0.)_
+
+**create (monthly)**
+```
+{
+  "client_change_id": "c8",
+  "entity": "budget",
+  "op": "create",
+  "id": "01BG00000000000000000BG01",
+  "data": {
+    "category_id": "01UT00000000000000000UT01",
+    "amount": "500.00",
+    "period_type": "monthly"
+  }
+}
+```
+
+**create (custom)**
+```
+{
+  "client_change_id": "c9",
+  "entity": "budget",
+  "op": "create",
+  "id": "01BG00000000000000000BG02",
+  "data": {
+    "category_id": "01UT00000000000000000UT01",
+    "amount": "1200.00",
+    "period_type": "custom",
+    "period_start": "2026-08-01",
+    "period_end": "2026-08-31"
+  }
+}
+```
+
+**update**
+```
+{
+  "client_change_id": "c8",
+  "entity": "budget",
+  "op": "update",
+  "id": "01BG00000000000000000BG01",
+  "data": {
+    "category_id": "01UT00000000000000000UT01",
+    "amount": "600.00",
+    "period_type": "monthly"
+  }
+}
+```
+
+**delete**
+```
+{
+  "client_change_id": "c8",
+  "entity": "budget",
+  "op": "delete",
+  "id": "01BG00000000000000000BG01"
+}
+```
+
+## recurring_transaction
+
+A template that generates real `transaction` rows on a schedule, server-side (so bills post even if the app is never opened). `frequency`: `daily` | `weekly` | `monthly` | `yearly`. Required: `account_id`, `category_id`, `amount`, `frequency`, `start_date`. Optional: `description`, `end_date` (stops generation once passed), `is_active` (default `true` — set `false` to pause without deleting). `next_run_date` is **server-computed and read-only**; any value sent by the client is ignored. Unlike `transaction`, no `type` is sent — it's derived from the category at generation time. Generated transactions are ordinary, fully editable `transaction` rows delivered through the existing `transaction` entity — there is no flag marking them as auto-generated. _(Added v1.2.0.)_
+
+**create**
+```
+{
+  "client_change_id": "c10",
+  "entity": "recurring_transaction",
+  "op": "create",
+  "id": "01RT00000000000000000RT01",
+  "data": {
+    "account_id": "01AC00000000000000000AC01",
+    "category_id": "01UT00000000000000000UT02",
+    "amount": "15.00",
+    "description": "Netflix",
+    "frequency": "monthly",
+    "start_date": "2026-09-01"
+  }
+}
+```
+
+**update**
+```
+{
+  "client_change_id": "c10",
+  "entity": "recurring_transaction",
+  "op": "update",
+  "id": "01RT00000000000000000RT01",
+  "data": {
+    "account_id": "01AC00000000000000000AC01",
+    "category_id": "01UT00000000000000000UT02",
+    "amount": "17.99",
+    "description": "Netflix",
+    "frequency": "monthly",
+    "start_date": "2026-09-01",
+    "is_active": true
+  }
+}
+```
+
+**delete**
+```
+{
+  "client_change_id": "c10",
+  "entity": "recurring_transaction",
+  "op": "delete",
+  "id": "01RT00000000000000000RT01"
+}
+```
+
 ---
 
 ## Changelog
 
+- **1.2.0** (2026-08-24) — Added the `budget` entity (create/update/delete): a spending cap on an expense `user_category`, either recurring monthly or a fixed custom date range, with derived `spent`/`remaining` on read. Added the `recurring_transaction` entity (create/update/delete): a template that generates real `transaction` rows server-side on a schedule (`daily`|`weekly`|`monthly`|`yearly`); `next_run_date` is read-only. `liability` read responses now also include derived `paid_amount`/`remaining_balance`.
 - **1.1.1** (2026-08-10) — Corrected the `account` `type` enum, which had never matched the backend: it is `bank_account` | `cash` | `credit_card` | `savings`, not `cash` | `bank` | `e_wallet` | `other`. This was a doc-only fix; the backend behavior is unchanged. Any old value other than `cash` sent to `POST /api/v1/sync/push` was already rejected by the database.
 - **1.1.0** (2026-07-24) — Added the `user_category` entity (create/update/delete). Transaction `category_id` must now reference a `user_category` you own rather than a global `category`.
 - **1.0.0** — Initial push-changes contract.
