@@ -32,13 +32,28 @@ class LiabilityPaymentService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): LiabilityPayment
     {
-        $ownsLiability = Liability::where('id', $data['liability_id'] ?? null)->where('user_id', $user->id)->exists();
-        $ownsAccount = Account::where('id', $data['account_id'] ?? null)->where('user_id', $user->id)->exists();
+        $payload = [];
 
-        if (! $ownsLiability || ! $ownsAccount) {
-            throw ValidationException::withMessages([
-                'data' => ['The liability or account is invalid.'],
-            ]);
+        // liability_id/account_id are required on create, but optional on update: an omitted
+        // field means "keep the current value", not "invalid".
+        if ($op === 'create' || array_key_exists('liability_id', $data)) {
+            if (! Liability::where('id', $data['liability_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data' => ['The liability or account is invalid.'],
+                ]);
+            }
+
+            $payload['liability_id'] = $data['liability_id'];
+        }
+
+        if ($op === 'create' || array_key_exists('account_id', $data)) {
+            if (! Account::where('id', $data['account_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data' => ['The liability or account is invalid.'],
+                ]);
+            }
+
+            $payload['account_id'] = $data['account_id'];
         }
 
         if ($op === 'update' && ! $this->ownedQuery($user->id)->whereKey($id)->exists()) {
@@ -47,14 +62,14 @@ class LiabilityPaymentService
             ]);
         }
 
+        foreach (['amount', 'payment_date', 'note'] as $field) {
+            if ($op === 'create' || array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field] ?? null;
+            }
+        }
+
         // userId is null: the table has no user_id column; ownership already enforced above.
-        return $this->upsertEntity(LiabilityPayment::class, $id, $op, [
-            'liability_id' => $data['liability_id'],
-            'account_id' => $data['account_id'],
-            'amount' => $data['amount'] ?? null,
-            'payment_date' => $data['payment_date'] ?? null,
-            'note' => $data['note'] ?? null,
-        ], null);
+        return $this->upsertEntity(LiabilityPayment::class, $id, $op, $payload, null);
     }
 
     public function delete(User $user, string $id): void

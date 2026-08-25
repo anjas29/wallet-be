@@ -37,59 +37,74 @@ class BudgetService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): Budget
     {
-        $category = UserCategory::where('id', $data['category_id'] ?? null)
-            ->where('user_id', $user->id)
-            ->first();
+        $existing = $op === 'update' ? Budget::where('user_id', $user->id)->find($id) : null;
 
-        if (! $category) {
-            throw ValidationException::withMessages([
-                'data.category_id' => ['The selected category is invalid.'],
-            ]);
-        }
+        $payload = ['user_id' => $user->id];
 
-        if ($category->type !== 'expense') {
-            throw ValidationException::withMessages([
-                'data.category_id' => ['A budget can only be set on an expense category.'],
-            ]);
-        }
+        // category_id is required on create, but optional on update: an omitted
+        // field means "keep the current value", not "invalid".
+        if ($op === 'create' || array_key_exists('category_id', $data)) {
+            $category = UserCategory::where('id', $data['category_id'] ?? null)
+                ->where('user_id', $user->id)
+                ->first();
 
-        $periodType = $data['period_type'] ?? null;
-
-        if (! in_array($periodType, ['monthly', 'custom'], true)) {
-            throw ValidationException::withMessages([
-                'data.period_type' => ['The period type must be monthly or custom.'],
-            ]);
-        }
-
-        $periodStart = $data['period_start'] ?? null;
-        $periodEnd = $data['period_end'] ?? null;
-
-        if ($periodType === 'custom') {
-            if (! $periodStart || ! $periodEnd) {
+            if (! $category) {
                 throw ValidationException::withMessages([
-                    'data.period_start' => ['A custom budget requires period_start and period_end.'],
+                    'data.category_id' => ['The selected category is invalid.'],
                 ]);
             }
 
-            if (Carbon::parse($periodEnd)->lt(Carbon::parse($periodStart))) {
+            if ($category->type !== 'expense') {
                 throw ValidationException::withMessages([
-                    'data.period_end' => ['period_end must not be before period_start.'],
+                    'data.category_id' => ['A budget can only be set on an expense category.'],
                 ]);
             }
-        } else {
-            // monthly: always relative to "now" — never persist stray dates from a client.
-            $periodStart = null;
-            $periodEnd = null;
+
+            $payload['category_id'] = $data['category_id'];
         }
 
-        $budget = $this->upsertEntity(Budget::class, $id, $op, [
-            'user_id' => $user->id,
-            'category_id' => $data['category_id'],
-            'amount' => $data['amount'] ?? null,
-            'period_type' => $periodType,
-            'period_start' => $periodStart,
-            'period_end' => $periodEnd,
-        ], $user->id);
+        // period_type/period_start/period_end are validated together: an update touching any
+        // one of them re-resolves the full trio, falling back to the stored values for the rest.
+        if ($op === 'create' || array_key_exists('period_type', $data) || array_key_exists('period_start', $data) || array_key_exists('period_end', $data)) {
+            $periodType = array_key_exists('period_type', $data) ? $data['period_type'] : $existing?->period_type;
+
+            if (! in_array($periodType, ['monthly', 'custom'], true)) {
+                throw ValidationException::withMessages([
+                    'data.period_type' => ['The period type must be monthly or custom.'],
+                ]);
+            }
+
+            $periodStart = array_key_exists('period_start', $data) ? $data['period_start'] : $existing?->period_start;
+            $periodEnd = array_key_exists('period_end', $data) ? $data['period_end'] : $existing?->period_end;
+
+            if ($periodType === 'custom') {
+                if (! $periodStart || ! $periodEnd) {
+                    throw ValidationException::withMessages([
+                        'data.period_start' => ['A custom budget requires period_start and period_end.'],
+                    ]);
+                }
+
+                if (Carbon::parse($periodEnd)->lt(Carbon::parse($periodStart))) {
+                    throw ValidationException::withMessages([
+                        'data.period_end' => ['period_end must not be before period_start.'],
+                    ]);
+                }
+            } else {
+                // monthly: always relative to "now" — never persist stray dates from a client.
+                $periodStart = null;
+                $periodEnd = null;
+            }
+
+            $payload['period_type'] = $periodType;
+            $payload['period_start'] = $periodStart;
+            $payload['period_end'] = $periodEnd;
+        }
+
+        if ($op === 'create' || array_key_exists('amount', $data)) {
+            $payload['amount'] = $data['amount'] ?? null;
+        }
+
+        $budget = $this->upsertEntity(Budget::class, $id, $op, $payload, $user->id);
 
         $this->attachSpent(new Collection([$budget]));
 
