@@ -37,27 +37,45 @@ class TransactionService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): Transaction
     {
-        $ownsAccount = Account::where('id', $data['account_id'] ?? null)->where('user_id', $user->id)->exists();
-        $categoryExists = UserCategory::where('id', $data['category_id'] ?? null)
-            ->where('user_id', $user->id)
-            ->exists();
+        $payload = ['user_id' => $user->id];
 
-        if (! $ownsAccount || ! $categoryExists) {
-            throw ValidationException::withMessages([
-                'data' => ['The selected account or category is invalid.'],
-            ]);
+        // account_id/category_id are required on create, but optional on update: an omitted
+        // field means "keep the current value", not "invalid".
+        if ($op === 'create' || array_key_exists('account_id', $data)) {
+            if (! Account::where('id', $data['account_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data' => ['The selected account or category is invalid.'],
+                ]);
+            }
+
+            $payload['account_id'] = $data['account_id'];
         }
 
-        $transaction = $this->upsertEntity(Transaction::class, $id, $op, [
-            'user_id' => $user->id,
-            'account_id' => $data['account_id'],
-            'category_id' => $data['category_id'],
-            'exchange_rate_to_anchor' => $data['exchange_rate_to_anchor'] ?? '1',
-            'type' => $data['type'] ?? 'expense',
-            'amount' => $data['amount'] ?? null,
-            'description' => $data['description'] ?? null,
-            'transaction_date' => $data['transaction_date'] ?? null,
-        ], $user->id);
+        if ($op === 'create' || array_key_exists('category_id', $data)) {
+            if (! UserCategory::where('id', $data['category_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data' => ['The selected account or category is invalid.'],
+                ]);
+            }
+
+            $payload['category_id'] = $data['category_id'];
+        }
+
+        if ($op === 'create' || array_key_exists('exchange_rate_to_anchor', $data)) {
+            $payload['exchange_rate_to_anchor'] = $data['exchange_rate_to_anchor'] ?? '1';
+        }
+
+        if ($op === 'create' || array_key_exists('type', $data)) {
+            $payload['type'] = $data['type'] ?? 'expense';
+        }
+
+        foreach (['amount', 'description', 'transaction_date'] as $field) {
+            if ($op === 'create' || array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field] ?? null;
+            }
+        }
+
+        $transaction = $this->upsertEntity(Transaction::class, $id, $op, $payload, $user->id);
 
         return $transaction->load('account.userCurrency');
     }

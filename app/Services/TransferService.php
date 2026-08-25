@@ -27,29 +27,41 @@ class TransferService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): Transfer
     {
-        $fromId = $data['from_account_id'] ?? null;
-        $toId = $data['to_account_id'] ?? null;
+        $existing = $op === 'update' ? Transfer::where('user_id', $user->id)->find($id) : null;
 
-        $ownsFrom = Account::where('id', $fromId)->where('user_id', $user->id)->exists();
-        $ownsTo = Account::where('id', $toId)->where('user_id', $user->id)->exists();
+        $payload = ['user_id' => $user->id];
 
-        if (! $ownsFrom || ! $ownsTo || $fromId === $toId) {
-            throw ValidationException::withMessages([
-                'data' => ['The transfer accounts are invalid.'],
-            ]);
+        // from/to accounts are required together on create. An update that touches neither
+        // keeps the existing pair untouched; supplying either one re-validates the pair as a
+        // whole, since inequality/ownership only makes sense checked together.
+        if ($op === 'create' || array_key_exists('from_account_id', $data) || array_key_exists('to_account_id', $data)) {
+            $fromId = array_key_exists('from_account_id', $data) ? $data['from_account_id'] : $existing?->from_account_id;
+            $toId = array_key_exists('to_account_id', $data) ? $data['to_account_id'] : $existing?->to_account_id;
+
+            $ownsFrom = Account::where('id', $fromId)->where('user_id', $user->id)->exists();
+            $ownsTo = Account::where('id', $toId)->where('user_id', $user->id)->exists();
+
+            if (! $ownsFrom || ! $ownsTo || $fromId === $toId) {
+                throw ValidationException::withMessages([
+                    'data' => ['The transfer accounts are invalid.'],
+                ]);
+            }
+
+            $payload['from_account_id'] = $fromId;
+            $payload['to_account_id'] = $toId;
         }
 
-        return $this->upsertEntity(Transfer::class, $id, $op, [
-            'user_id' => $user->id,
-            'from_account_id' => $fromId,
-            'to_account_id' => $toId,
-            'from_amount' => $data['from_amount'] ?? null,
-            'to_amount' => $data['to_amount'] ?? null,
-            'exchange_rate' => $data['exchange_rate'] ?? null,
-            'fee' => $data['fee'] ?? '0',
-            'description' => $data['description'] ?? null,
-            'transfer_date' => $data['transfer_date'] ?? null,
-        ], $user->id);
+        foreach (['from_amount', 'to_amount', 'exchange_rate', 'description', 'transfer_date'] as $field) {
+            if ($op === 'create' || array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field] ?? null;
+            }
+        }
+
+        if ($op === 'create' || array_key_exists('fee', $data)) {
+            $payload['fee'] = $data['fee'] ?? '0';
+        }
+
+        return $this->upsertEntity(Transfer::class, $id, $op, $payload, $user->id);
     }
 
     public function delete(User $user, string $id): void

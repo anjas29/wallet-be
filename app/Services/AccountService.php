@@ -52,25 +52,33 @@ class AccountService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): Account
     {
-        $ownsCurrency = UserCurrency::where('id', $data['user_currency_id'] ?? null)
-            ->where('user_id', $user->id)
-            ->exists();
+        $payload = ['user_id' => $user->id];
 
-        if (! $ownsCurrency) {
-            throw ValidationException::withMessages([
-                'data.user_currency_id' => ['The selected currency is invalid.'],
-            ]);
+        // user_currency_id is required on create, but optional on update: an omitted
+        // field means "keep the current value", not "invalid".
+        if ($op === 'create' || array_key_exists('user_currency_id', $data)) {
+            if (! UserCurrency::where('id', $data['user_currency_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data.user_currency_id' => ['The selected currency is invalid.'],
+                ]);
+            }
+
+            $payload['user_currency_id'] = $data['user_currency_id'];
         }
 
-        $payload = [
-            'user_id' => $user->id,
-            'user_currency_id' => $data['user_currency_id'],
-            'name' => $data['name'] ?? null,
-            'notes' => $data['notes'] ?? null,
-            'type' => $data['type'] ?? null,
-            'initial_balance' => $data['initial_balance'] ?? '0',
-            'is_default' => (bool) ($data['is_default'] ?? false),
-        ];
+        foreach (['name', 'notes', 'type'] as $field) {
+            if ($op === 'create' || array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field] ?? null;
+            }
+        }
+
+        if ($op === 'create' || array_key_exists('initial_balance', $data)) {
+            $payload['initial_balance'] = $data['initial_balance'] ?? '0';
+        }
+
+        if ($op === 'create' || array_key_exists('is_default', $data)) {
+            $payload['is_default'] = (bool) ($data['is_default'] ?? false);
+        }
 
         // Only set color when supplied: lets the DB default apply on create and
         // leaves the existing value untouched on updates that omit it.

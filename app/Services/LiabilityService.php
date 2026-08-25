@@ -36,27 +36,31 @@ class LiabilityService
 
     public function createOrUpdate(User $user, string $id, string $op, array $data): Liability
     {
-        $ownsCurrency = UserCurrency::where('id', $data['user_currency_id'] ?? null)
-            ->where('user_id', $user->id)
-            ->exists();
+        $payload = ['user_id' => $user->id];
 
-        if (! $ownsCurrency) {
-            throw ValidationException::withMessages([
-                'data.user_currency_id' => ['The selected currency is invalid.'],
-            ]);
+        // user_currency_id is required on create, but optional on update: an omitted
+        // field means "keep the current value", not "invalid".
+        if ($op === 'create' || array_key_exists('user_currency_id', $data)) {
+            if (! UserCurrency::where('id', $data['user_currency_id'] ?? null)->where('user_id', $user->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'data.user_currency_id' => ['The selected currency is invalid.'],
+                ]);
+            }
+
+            $payload['user_currency_id'] = $data['user_currency_id'];
         }
 
-        return $this->upsertEntity(Liability::class, $id, $op, [
-            'user_id' => $user->id,
-            'user_currency_id' => $data['user_currency_id'],
-            'name' => $data['name'] ?? null,
-            'type' => $data['type'] ?? null,
-            'principal_amount' => $data['principal_amount'] ?? null,
-            'interest_rate' => $data['interest_rate'] ?? null,
-            'due_date' => $data['due_date'] ?? null,
-            'notes' => $data['notes'] ?? null,
-            'is_settled' => (bool) ($data['is_settled'] ?? false),
-        ], $user->id);
+        foreach (['name', 'type', 'principal_amount', 'interest_rate', 'due_date', 'notes'] as $field) {
+            if ($op === 'create' || array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field] ?? null;
+            }
+        }
+
+        if ($op === 'create' || array_key_exists('is_settled', $data)) {
+            $payload['is_settled'] = (bool) ($data['is_settled'] ?? false);
+        }
+
+        return $this->upsertEntity(Liability::class, $id, $op, $payload, $user->id);
     }
 
     public function delete(User $user, string $id): void
