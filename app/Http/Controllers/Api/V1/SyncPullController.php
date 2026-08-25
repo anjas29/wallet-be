@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AccountResource;
+use App\Http\Resources\AiConversationResource;
 use App\Http\Resources\BudgetResource;
 use App\Http\Resources\CategoryResource;
 use App\Http\Resources\CurrencyResource;
@@ -15,6 +16,7 @@ use App\Http\Resources\TransferResource;
 use App\Http\Resources\UserCategoryResource;
 use App\Http\Resources\UserCurrencyResource;
 use App\Services\AccountService;
+use App\Services\AiConversationService;
 use App\Services\BudgetService;
 use App\Services\CategoryService;
 use App\Services\CurrencyService;
@@ -44,6 +46,7 @@ class SyncPullController extends Controller
         private LiabilityPaymentService $liabilityPayments,
         private BudgetService $budgets,
         private RecurringTransactionService $recurringTransactions,
+        private AiConversationService $aiConversations,
     ) {}
 
     /**
@@ -82,6 +85,10 @@ class SyncPullController extends Controller
             'liability_payments' => LiabilityPaymentResource::collection($this->liabilityPayments->list($userId, $since, $limit)),
             'budgets' => BudgetResource::collection($this->budgets->list($userId, $since, $limit)),
             'recurring_transactions' => RecurringTransactionResource::collection($this->recurringTransactions->list($userId, $since, $limit)),
+            // AI chat: conversations sync, transcripts do not. Message rows are large free
+            // text and unbounded in count, so they are read per-conversation from
+            // GET /ai/conversations/{id} instead of riding along on every pull.
+            'ai_conversations' => AiConversationResource::collection($this->aiConversations->list($userId, $since, $limit)),
             'server_time' => now()->toISOString(),
         ]);
     }
