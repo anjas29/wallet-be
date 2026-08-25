@@ -14,6 +14,8 @@ class AiMessage extends BaseModel
         'user_id',
         'role',
         'content',
+        'image_path',
+        'image_mime',
         'error',
     ];
 

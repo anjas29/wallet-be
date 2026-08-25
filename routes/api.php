@@ -79,8 +79,12 @@ Route::prefix('v1')->group(function () {
         // AI analyst: read-only financial chat. POST /ai/chat streams Server-Sent Events
         // rather than the usual JSON envelope, and is throttled because each turn costs an
         // upstream call and holds the connection open for its duration.
+        //
+        // 5/min, not 20: one turn is up to GEMINI_MAX_TOOL_ITERATIONS upstream requests, so even
+        // this can outrun a free-tier per-minute quota if a user chats flat out. It bounds the
+        // burst; the per-day ration in AiChatService is what bounds the total.
         Route::prefix('ai')->group(function () {
-            Route::post('/chat', [AiChatController::class, 'chat'])->middleware('throttle:20,1');
+            Route::post('/chat', [AiChatController::class, 'chat'])->middleware('throttle:5,1');
             Route::get('/conversations', [AiChatController::class, 'index']);
             Route::get('/conversations/{id}', [AiChatController::class, 'show']);
             Route::delete('/conversations/{id}', [AiChatController::class, 'destroy']);

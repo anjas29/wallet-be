@@ -10,7 +10,9 @@ use App\Services\AiConversationService;
 use App\Services\AiMessageService;
 use Generator;
 use Illuminate\Http\StreamedEvent;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -39,6 +41,19 @@ class AiChatService
           with thousands separators and the currency code.
         - You are read-only. If asked to create, edit or delete anything, explain that you cannot
           and describe where in the app to do it.
+        - The user may attach an image (a receipt, a statement, a screenshot). Read it and answer
+          from it, but remember it is not in their books until they enter it — say so rather than
+          implying it has been recorded.
+
+        Linking records:
+        - When you name a specific transaction, transfer or liability that came back from a tool,
+          put a reference tag straight after it, using the `id` from that tool result:
+          "your biggest expense was the 84.20 supermarket run on 12 Aug [[transaction:01J...]]".
+        - Valid types are exactly `transaction`, `transfer` and `liability`. Nothing else.
+        - Copy ids verbatim from tool results. Never invent or reconstruct one — a tag whose id is
+          not a real record of this user's is deleted before the user sees it.
+        - A tag is a marker, not a word: write the sentence so it still reads correctly with every
+          tag removed. One tag per record, and never inside a heading or a table cell.
         TXT;
 
     public function __construct(
@@ -46,21 +61,24 @@ class AiChatService
         private AnalystToolService $tools,
         private AiConversationService $conversations,
         private AiMessageService $messages,
+        private ImageAttachment $attachments,
     ) {}
 
     /**
-     * Persist the user's turn and reserve the assistant row. Runs before the stream opens so
-     * validation and ownership errors still get the standard JSON envelope.
+     * Persist the user's turn (and its attachment) and reserve the assistant row. Runs before the
+     * stream opens so validation, ownership and upload errors still get the standard JSON
+     * envelope.
      *
-     * @return array{user: User, conversation: AiConversation, userMessage: AiMessage, assistantMessage: AiMessage}
+     * @return array{user: User, conversation: AiConversation, userMessage: AiMessage, assistantMessage: AiMessage, contents: array}
      */
-    public function beginTurn(User $user, string $message, ?string $conversationId, ?string $messageId): array
+    public function beginTurn(User $user, string $message, ?string $conversationId, ?string $messageId, ?UploadedFile $image = null): array
     {
-        $conversation = $this->conversations->resolveForTurn($user, $conversationId, $message);
+        // Before anything is written or uploaded, so a user over quota costs nothing at all.
+        $this->enforceDailyLimits($user, $image !== null);
 
-        // History must be read before the new message is written, or the prompt ends with the
-        // question duplicated.
-        $history = $this->messages->historyForPrompt($user->id, $conversation->id);
+        $conversation = $this->conversations->resolveForTurn($user, $conversationId, $message, $image !== null);
+
+        $attachment = $image !== null ? $this->storeAttachment($user, $image) : null;
 
         $userMessage = new AiMessage;
         $userMessage->id = $messageId ?? (string) Str::ulid();
@@ -69,10 +87,15 @@ class AiChatService
             'user_id' => $user->id,
             'role' => 'user',
             'content' => $message,
+            'image_path' => $attachment['path'] ?? null,
+            'image_mime' => $attachment['mime'] ?? null,
         ])->save();
 
+        // Read after the user's row is written, so the new question is already in it.
+        $contents = $this->messages->contentsForPrompt($user->id, $conversation->id);
+
         // Reserved empty so its id can go out in `meta` and the client can render a placeholder
-        // bubble immediately. historyForPrompt() skips empty rows, so a stream that dies here
+        // bubble immediately. contentsForPrompt() skips empty rows, so a stream that dies here
         // cannot poison the next turn's context.
         $assistantMessage = new AiMessage;
         $assistantMessage->id = (string) Str::ulid();
@@ -90,8 +113,58 @@ class AiChatService
             'conversation' => $conversation,
             'userMessage' => $userMessage,
             'assistantMessage' => $assistantMessage,
-            'history' => $history,
+            'contents' => $contents,
         ];
+    }
+
+    /**
+     * Downscale, then store on the private disk — no public URL, because chat attachments are
+     * receipts and statements, not avatars. Only the shrunk copy is ever kept: the original is
+     * of no further use once the model and the transcript both read the normalised one.
+     *
+     * @return array{path: string, mime: string}
+     */
+    private function storeAttachment(User $user, UploadedFile $image): array
+    {
+        $normalised = $this->attachments->normalise($image);
+
+        $path = "ai-attachments/{$user->id}/".Str::ulid().'.'.$normalised['extension'];
+
+        Storage::disk('s3')->put($path, $normalised['bytes']);
+
+        return ['path' => $path, 'mime' => $normalised['mime']];
+    }
+
+    /**
+     * Free-tier ration, counted per calendar day off the messages themselves rather than a cache
+     * key, so it survives a restart and cannot be reset by clearing the cache.
+     *
+     * Throws before the stream opens, which is what makes the 429 a normal JSON envelope the
+     * client can read rather than an `error` event it has to special-case.
+     */
+    private function enforceDailyLimits(User $user, bool $hasImage): void
+    {
+        $turnLimit = (int) config('services.gemini.daily_turn_limit', 20);
+        $imageLimit = (int) config('services.gemini.daily_image_limit', 10);
+
+        $today = AiMessage::query()
+            ->where('user_id', $user->id)
+            ->where('role', 'user')
+            ->where('created_at', '>=', now()->startOfDay());
+
+        if ($turnLimit > 0 && (clone $today)->count() >= $turnLimit) {
+            throw new AiChatException(
+                "You have reached today's limit of {$turnLimit} analyst messages. Try again tomorrow.",
+                429,
+            );
+        }
+
+        if ($hasImage && $imageLimit > 0 && (clone $today)->whereNotNull('image_path')->count() >= $imageLimit) {
+            throw new AiChatException(
+                "You have reached today's limit of {$imageLimit} image attachments. You can still ask questions without a photo.",
+                429,
+            );
+        }
     }
 
     /**
@@ -113,9 +186,11 @@ class AiChatService
             'assistant_message_id' => $assistant->id,
         ]);
 
-        $contents = array_merge($turn['history'], [
-            ['role' => 'user', 'parts' => [['text' => $turn['userMessage']->content]]],
-        ]);
+        $contents = $turn['contents'];
+
+        // Strips reference tags the model made up before they reach the client. Holds text back
+        // across delta boundaries, so nothing is emitted until its enclosing tag is judged.
+        $tags = new AnswerTagFilter($user->id);
 
         $answer = '';
         $finishReason = null;
@@ -149,9 +224,13 @@ class AiChatService
                     $text .= $part['text'];
 
                     if ($calls === []) {
-                        $answer .= $part['text'];
+                        $safe = $tags->push($part['text']);
 
-                        yield new StreamedEvent('delta', ['text' => $part['text']]);
+                        if ($safe !== '') {
+                            $answer .= $safe;
+
+                            yield new StreamedEvent('delta', ['text' => $safe]);
+                        }
                     }
                 }
 
@@ -185,6 +264,15 @@ class AiChatService
                 // Gemini requires the model's own functionCall turn to be echoed back before the
                 // matching functionResponse parts, or the next request is rejected.
                 $contents[] = ['role' => 'user', 'parts' => $responses];
+            }
+
+            // Whatever the filter is still holding: a closing tag that never arrived is dropped.
+            $tail = $tags->flush();
+
+            if ($tail !== '') {
+                $answer .= $tail;
+
+                yield new StreamedEvent('delta', ['text' => $tail]);
             }
 
             $assistant->forceFill(['content' => $answer])->save();

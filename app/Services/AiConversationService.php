@@ -47,7 +47,7 @@ class AiConversationService
      * id (or supplied one we have not seen yet — clients own ULID generation here, matching
      * PersistsEntities).
      */
-    public function resolveForTurn(User $user, ?string $conversationId, string $firstMessage): AiConversation
+    public function resolveForTurn(User $user, ?string $conversationId, string $firstMessage, bool $hasImage = false): AiConversation
     {
         if ($conversationId !== null) {
             $existing = AiConversation::where('user_id', $user->id)->find($conversationId);
@@ -61,7 +61,7 @@ class AiConversationService
         $conversation->id = $conversationId ?? (string) Str::ulid();
         $conversation->fill([
             'user_id' => $user->id,
-            'title' => $this->titleFrom($firstMessage),
+            'title' => $this->titleFrom($firstMessage, $hasImage),
         ]);
         $conversation->save();
 
@@ -96,10 +96,17 @@ class AiConversationService
     }
 
     /**
-     * Cheap derived title so the chat list is readable without a second model call.
+     * Cheap derived title so the chat list is readable without a second model call. A turn that
+     * is nothing but an attachment has no text to derive from.
      */
-    private function titleFrom(string $message): string
+    private function titleFrom(string $message, bool $hasImage = false): string
     {
-        return Str::limit(trim(preg_replace('/\s+/', ' ', $message)), 60);
+        $title = Str::limit(trim(preg_replace('/\s+/', ' ', $message)), 60);
+
+        if ($title !== '') {
+            return $title;
+        }
+
+        return $hasImage ? 'Image' : 'New chat';
     }
 }

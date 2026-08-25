@@ -4,9 +4,13 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\User;
 use App\Services\Ai\AnalystToolService;
+use App\Services\Ai\AnswerTagFilter;
+use App\Services\Ai\ImageAttachment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -240,12 +244,13 @@ class AiChatTest extends TestCase
 
         [, $token] = $this->authUser();
 
-        // Failures before the stream opens keep the standard JSON envelope.
+        // Failures before the stream opens keep the standard JSON envelope. `message` is only
+        // optional when an image carries the question, so an empty body with neither still 422s.
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/ai/chat', ['message' => ''])
             ->assertStatus(422)
             ->assertJsonPath('success', false)
-            ->assertJsonPath('errors.message.0', 'The message field is required.');
+            ->assertJsonPath('errors.message.0', 'The message field is required when image is not present.');
     }
 
     public function test_conversation_endpoints_return_the_transcript_and_are_user_scoped(): void
@@ -478,5 +483,411 @@ class AiChatTest extends TestCase
         $result = app(AnalystToolService::class)->call($user->id, 'drop_everything', []);
 
         $this->assertSame(['error' => "Unknown tool 'drop_everything'."], $result);
+    }
+
+    private function fakeS3(): void
+    {
+        Storage::fake('s3');
+        Storage::disk('s3')->buildTemporaryUrlsUsing(
+            fn (string $path, $expiration, array $options = []) => "https://fake-bucket.s3.amazonaws.com/{$path}"
+        );
+    }
+
+    public function test_chat_accepts_an_image_attachment_and_forwards_it_to_the_model(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            $this->sse([$this->textFrame('That is a 12.50 coffee receipt.', 'STOP')])
+        )]);
+
+        // No `message` at all: the image is the question.
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['image' => UploadedFile::fake()->image('receipt.jpg', 64, 64)]);
+
+        $response->assertStatus(200)->streamedContent();
+
+        $message = DB::table('ai_messages')->where('user_id', $user->id)->where('role', 'user')->first();
+
+        $this->assertNotNull($message->image_path);
+        $this->assertStringStartsWith("ai-attachments/{$user->id}/", $message->image_path);
+        $this->assertSame('image/jpeg', $message->image_mime);
+        $this->assertSame('', $message->content);
+        Storage::disk('s3')->assertExists($message->image_path);
+
+        // The photo reaches Gemini as an inline_data part on the user turn.
+        $parts = Http::recorded()[0][0]->data()['contents'][0]['parts'];
+
+        $this->assertCount(1, $parts);
+        $this->assertSame('image/jpeg', $parts[0]['inline_data']['mime_type']);
+        $this->assertNotEmpty($parts[0]['inline_data']['data']);
+
+        // An attachment-only turn still needs a readable chat-list entry.
+        $this->assertSame('Image', DB::table('ai_conversations')->where('user_id', $user->id)->value('title'));
+    }
+
+    public function test_transcript_exposes_a_signed_url_for_an_attachment(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            $this->sse([$this->textFrame('Noted.', 'STOP')])
+        )]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'What is this?',
+                // Big enough that the JPEG re-encode is unambiguously smaller than the PNG, so
+                // normalisation is what decides the stored mime.
+                'image' => UploadedFile::fake()->image('receipt.png', 1200, 900),
+            ])
+            ->streamedContent();
+
+        $conversationId = DB::table('ai_conversations')->where('user_id', $user->id)->value('id');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/ai/conversations/{$conversationId}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.messages.0.image_mime', 'image/jpeg')
+            ->assertJsonPath('data.messages.1.image_url', null);
+
+        $url = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/ai/conversations/{$conversationId}")
+            ->json('data.messages.0.image_url');
+
+        $this->assertStringContainsString("ai-attachments/{$user->id}/", $url);
+    }
+
+    public function test_only_the_newest_attachments_are_re_sent_on_later_turns(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        // Budget of one: the older photo must degrade to a note rather than being re-billed.
+        config(['services.gemini.max_history_images' => 1]);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
+            ->push($this->sse([$this->textFrame('First answer.', 'STOP')]))
+            ->push($this->sse([$this->textFrame('Second answer.', 'STOP')]))]);
+
+        $first = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'First',
+                'image' => UploadedFile::fake()->image('one.jpg', 64, 64),
+            ]);
+
+        $first->streamedContent();
+        $conversationId = DB::table('ai_conversations')->where('user_id', $user->id)->value('id');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', [
+                'conversation_id' => $conversationId,
+                'message' => 'Second',
+                'image' => UploadedFile::fake()->image('two.jpg', 64, 64),
+            ])
+            ->streamedContent();
+
+        $contents = Http::recorded()[1][0]->data()['contents'];
+
+        $this->assertSame(['user', 'model', 'user'], array_column($contents, 'role'));
+
+        // Turn 1 keeps its text but loses the pixels.
+        $this->assertArrayNotHasKey('inline_data', $contents[0]['parts'][0]);
+        $this->assertStringContainsString('image was attached', $contents[0]['parts'][0]['text']);
+        $this->assertSame('First', $contents[0]['parts'][1]['text']);
+
+        // Turn 3 — the newest — still carries them.
+        $this->assertArrayHasKey('inline_data', $contents[2]['parts'][0]);
+        $this->assertSame('Second', $contents[2]['parts'][1]['text']);
+    }
+
+    public function test_reference_tags_survive_only_for_records_the_user_owns(): void
+    {
+        [$user, $token] = $this->authUser();
+        $ids = $this->seedBaseline($user);
+
+        $realId = (string) Str::ulid();
+        $strangerId = (string) Str::ulid();
+
+        DB::table('transactions')->insert([
+            'id' => $realId, 'user_id' => $user->id, 'account_id' => $ids['accountId'],
+            'category_id' => $ids['categoryId'], 'type' => 'expense', 'amount' => '40.00',
+            'transaction_date' => now()->toDateString(), 'exchange_rate_to_anchor' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // The real tag is deliberately split across three deltas — that is the normal case, not
+        // an edge case, and emitting half of it would be unrecoverable.
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->sse([
+            $this->textFrame('Groceries [[transa'),
+            $this->textFrame('ction:'.$realId),
+            $this->textFrame(']] led, then rent [[transaction:'.$strangerId.']].', 'STOP'),
+        ]))]);
+
+        $body = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'What did I spend on?'])
+            ->assertStatus(200)
+            ->streamedContent();
+
+        // No partial tag ever went out on the wire.
+        $this->assertStringNotContainsString('[[transa"', $body);
+
+        $content = DB::table('ai_messages')
+            ->where('user_id', $user->id)->where('role', 'assistant')->value('content');
+
+        $this->assertSame("Groceries [[transaction:{$realId}]] led, then rent .", $content);
+    }
+
+    public function test_reference_tags_are_dropped_for_unknown_types_and_deleted_records(): void
+    {
+        [$user] = $this->authUser();
+        $ids = $this->seedBaseline($user);
+
+        $deletedId = (string) Str::ulid();
+
+        DB::table('transactions')->insert([
+            'id' => $deletedId, 'user_id' => $user->id, 'account_id' => $ids['accountId'],
+            'category_id' => $ids['categoryId'], 'type' => 'expense', 'amount' => '40.00',
+            'transaction_date' => now()->toDateString(), 'exchange_rate_to_anchor' => 1,
+            'deleted_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $filter = new AnswerTagFilter($user->id);
+
+        // A soft-deleted record has no screen to open, and `account` is not a linkable type.
+        $out = $filter->push("a [[transaction:{$deletedId}]] b [[account:{$ids['accountId']}]] c");
+
+        $this->assertSame('a  b  c', $out.$filter->flush());
+
+        // '[[' in ordinary prose is released rather than stalling the stream forever.
+        $prose = new AnswerTagFilter($user->id);
+        $this->assertSame(
+            'see [[the appendix for the full breakdown of every single category you spent on]',
+            $prose->push('see [[the appendix for the full breakdown of every single category you spent on]')
+        );
+
+        // An opener the model never closed is discarded at flush, not leaked as raw markup.
+        $dangling = new AnswerTagFilter($user->id);
+        $this->assertSame('done ', $dangling->push('done [[transaction:01J').$dangling->flush());
+    }
+
+    public function test_row_tools_return_ids_and_transfers_are_user_scoped(): void
+    {
+        [$userA] = $this->authUser();
+        [$userB] = $this->authUser();
+
+        $idsA = $this->seedBaseline($userA);
+        $idsB = $this->seedBaseline($userB, 'EUR');
+
+        $transactionId = (string) Str::ulid();
+
+        DB::table('transactions')->insert([
+            'id' => $transactionId, 'user_id' => $userA->id, 'account_id' => $idsA['accountId'],
+            'category_id' => $idsA['categoryId'], 'type' => 'expense', 'amount' => '40.00',
+            'transaction_date' => now()->toDateString(), 'exchange_rate_to_anchor' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // A second account for A, so a transfer has somewhere to go.
+        $savingsId = (string) Str::ulid();
+
+        DB::table('accounts')->insert([
+            'id' => $savingsId, 'user_id' => $userA->id, 'user_currency_id' => $idsA['userCurrencyId'],
+            'name' => 'Savings', 'type' => 'bank_account', 'initial_balance' => '0', 'is_default' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $transferId = (string) Str::ulid();
+
+        DB::table('transfers')->insert([
+            'id' => $transferId, 'user_id' => $userA->id, 'from_account_id' => $idsA['accountId'],
+            'to_account_id' => $savingsId, 'from_amount' => '25.00', 'to_amount' => '25.00',
+            'exchange_rate' => 1, 'fee' => '1.00', 'description' => 'Monthly saving',
+            'transfer_date' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $strangerAccountId = (string) Str::ulid();
+
+        DB::table('accounts')->insert([
+            'id' => $strangerAccountId, 'user_id' => $userB->id, 'user_currency_id' => $idsB['userCurrencyId'],
+            'name' => 'Their savings', 'type' => 'bank_account', 'initial_balance' => '0', 'is_default' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::table('transfers')->insert([
+            'id' => (string) Str::ulid(), 'user_id' => $userB->id, 'from_account_id' => $idsB['accountId'],
+            'to_account_id' => $strangerAccountId, 'from_amount' => '900.00', 'to_amount' => '900.00',
+            'exchange_rate' => 1, 'fee' => '0', 'description' => 'Not yours',
+            'transfer_date' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $tools = app(AnalystToolService::class);
+        $range = [
+            'start_date' => now()->startOfMonth()->toDateString(),
+            'end_date' => now()->endOfMonth()->toDateString(),
+        ];
+
+        // Without an id in the tool result the model has nothing legitimate to put in a tag.
+        $transactions = $tools->listTransactions($userA->id, $range);
+        $this->assertSame($transactionId, $transactions['transactions'][0]['id']);
+
+        $transfers = $tools->listTransfers($userA->id, $range);
+        $this->assertCount(1, $transfers['transfers']);
+        $this->assertSame($transferId, $transfers['transfers'][0]['id']);
+        $this->assertSame('Checking', $transfers['transfers'][0]['from_account']);
+        $this->assertSame('Savings', $transfers['transfers'][0]['to_account']);
+        $this->assertSame('25.00', $transfers['transfers'][0]['amount']);
+        $this->assertSame('1.00', $transfers['transfers'][0]['fee']);
+        $this->assertSame('USD', $transfers['currency']);
+
+        // list_transfers is reachable through the same match whitelist as everything else.
+        $this->assertSame($transfers, $tools->call($userA->id, 'list_transfers', $range));
+    }
+
+    public function test_attachments_are_downscaled_and_re_encoded_before_storage_or_upload(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        config(['services.gemini.image.max_edge' => 512]);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            $this->sse([$this->textFrame('Noted.', 'STOP')])
+        )]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Read this',
+                'image' => UploadedFile::fake()->image('huge.png', 2400, 1200),
+            ])
+            ->streamedContent();
+
+        $message = DB::table('ai_messages')->where('user_id', $user->id)->where('role', 'user')->first();
+
+        // Only the shrunk copy is kept — the original never reaches the bucket.
+        $this->assertStringEndsWith('.jpg', $message->image_path);
+        $this->assertSame('image/jpeg', $message->image_mime);
+
+        $stored = Storage::disk('s3')->get($message->image_path);
+        [$width, $height, $type] = getimagesizefromstring($stored);
+
+        $this->assertSame(512, $width);
+        $this->assertSame(256, $height);
+        $this->assertSame(IMAGETYPE_JPEG, $type);
+
+        // And the same shrunk bytes are what Gemini is billed for.
+        $sent = Http::recorded()[0][0]->data()['contents'][0]['parts'][0]['inline_data'];
+
+        $this->assertSame('image/jpeg', $sent['mime_type']);
+        $this->assertSame(base64_encode($stored), $sent['data']);
+    }
+
+    public function test_uploads_over_the_configured_ceiling_are_refused(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        config(['services.gemini.image.max_upload_kb' => 20]);
+
+        Http::fake();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', [
+                'message' => 'Read this',
+                'image' => UploadedFile::fake()->create('big.jpg', 64, 'image/jpeg'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_messages', 0);
+    }
+
+    public function test_the_daily_turn_ration_is_refused_with_the_normal_envelope(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+
+        config(['services.gemini.daily_turn_limit' => 1]);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            $this->sse([$this->textFrame('Hello.', 'STOP')])
+        )]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'First'])
+            ->assertStatus(200)
+            ->streamedContent();
+
+        // Refused before the stream opens, so this is a readable JSON envelope and not an
+        // `error` event the client would have to parse out of a 200 SSE body.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'Second'])
+            ->assertStatus(429)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', "You have reached today's limit of 1 analyst messages. Try again tomorrow.");
+
+        // Nothing was written and nothing was spent on the refused turn.
+        $this->assertSame(1, DB::table('ai_messages')->where('role', 'user')->count());
+        Http::assertSentCount(1);
+    }
+
+    public function test_the_daily_image_ration_still_allows_text_questions(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+        $this->fakeS3();
+
+        config(['services.gemini.daily_image_limit' => 1]);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            $this->sse([$this->textFrame('Noted.', 'STOP')])
+        )]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['image' => UploadedFile::fake()->image('one.jpg', 64, 64)])
+            ->assertStatus(200)
+            ->streamedContent();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['image' => UploadedFile::fake()->image('two.jpg', 64, 64)])
+            ->assertStatus(429)
+            ->assertJsonPath('message', "You have reached today's limit of 1 image attachments. You can still ask questions without a photo.");
+
+        // The image ration is separate from the turn ration: text keeps working.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'How am I doing?'])
+            ->assertStatus(200)
+            ->streamedContent();
+
+        $this->assertSame(1, DB::table('ai_messages')->whereNotNull('image_path')->count());
+        $this->assertSame(2, DB::table('ai_messages')->where('role', 'user')->count());
+    }
+
+    /**
+     * Regression: the megapixel backstop was originally set at 12 MP, which reads like it covers
+     * every phone — but the standard 4032x3024 main sensor is 12,192,768 pixels, just over it, so
+     * resizing was skipped for the single most common upload there is. The guard exists for
+     * decode bombs, not for cameras.
+     */
+    public function test_a_standard_phone_photo_is_not_skipped_by_the_megapixel_backstop(): void
+    {
+        $file = UploadedFile::fake()->image('iphone.jpg', 4032, 3024);
+
+        $this->assertGreaterThan(12_000_000, 4032 * 3024);
+
+        $normalised = app(ImageAttachment::class)->normalise($file);
+        [$width, $height] = getimagesizefromstring($normalised['bytes']);
+
+        $this->assertSame(1024, $width);
+        $this->assertSame(768, $height);
+        $this->assertSame('image/jpeg', $normalised['mime']);
     }
 }
