@@ -74,12 +74,21 @@ class LiabilityPaymentService
 
     public function delete(User $user, string $id): void
     {
-        $payment = $this->ownedQuery($user->id)->whereKey($id)->first();
+        // Deleting a payment must still succeed even if its parent liability was already
+        // soft-deleted first in the same sync batch (or an earlier request) — otherwise the
+        // client's own delete change silently no-ops and the payment is left unreachable.
+        $payment = $this->ownedQuery($user->id, includeTrashedLiability: true)->whereKey($id)->first();
         $payment?->delete();
     }
 
-    private function ownedQuery(string $userId): Builder
+    private function ownedQuery(string $userId, bool $includeTrashedLiability = false): Builder
     {
-        return LiabilityPayment::whereHas('liability', fn ($q) => $q->where('user_id', $userId));
+        return LiabilityPayment::whereHas('liability', function ($q) use ($userId, $includeTrashedLiability) {
+            if ($includeTrashedLiability) {
+                $q->withTrashed();
+            }
+
+            $q->where('user_id', $userId);
+        });
     }
 }
