@@ -49,6 +49,9 @@ class AiChatService
           `currency`. Never sum values across different `currency` labels.
         - Be concise and concrete. Lead with the answer, then the supporting numbers. Format money
           with thousands separators and the currency code.
+        - Write in plain prose only. Never use Markdown: no `**bold**`, `*italic*`, `# headings`,
+          bullet or numbered lists, backticked code, or tables. The client renders raw text, so
+          any formatting characters would show up literally to the user.
         - You are read-only. If asked to create, edit or delete anything, explain that you cannot
           and describe where in the app to do it.
         - The user may attach an image (a receipt, a statement, a screenshot). Read it and answer
@@ -198,8 +201,11 @@ class AiChatService
 
         $contents = $turn['contents'];
 
-        // Strips reference tags the model made up before they reach the client. Holds text back
-        // across delta boundaries, so nothing is emitted until its enclosing tag is judged.
+        // Strips Markdown formatting, then reference tags the model made up, before either
+        // reaches the client. Both hold text back across delta boundaries, so nothing is emitted
+        // until its enclosing marker is judged. Order is arbitrary: neither touches the other's
+        // special characters, so a tag wrapped in emphasis still resolves correctly.
+        $markdown = new MarkdownStripFilter;
         $tags = new AnswerTagFilter($user->id);
 
         $answer = '';
@@ -234,7 +240,7 @@ class AiChatService
                     $text .= $part['text'];
 
                     if ($calls === []) {
-                        $safe = $tags->push($part['text']);
+                        $safe = $tags->push($markdown->push($part['text']));
 
                         if ($safe !== '') {
                             $answer .= $safe;
@@ -285,8 +291,9 @@ class AiChatService
                 $contents[] = ['role' => 'user', 'parts' => $responses];
             }
 
-            // Whatever the filter is still holding: a closing tag that never arrived is dropped.
-            $tail = $tags->flush();
+            // Whatever the filters are still holding: an unresolved Markdown delimiter is
+            // released as plain text, but a closing tag that never arrived is dropped.
+            $tail = $tags->push($markdown->flush()).$tags->flush();
 
             if ($tail !== '') {
                 $answer .= $tail;

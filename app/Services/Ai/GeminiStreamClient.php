@@ -56,6 +56,10 @@ class GeminiStreamClient
                 'body' => $response->body(),
             ]);
 
+            if ($response->status() === 429) {
+                throw new AiChatException('The AI assistant is busy right now. Please try again in a few minutes.', 429);
+            }
+
             throw new AiChatException('The AI service returned an error.', 502);
         }
 

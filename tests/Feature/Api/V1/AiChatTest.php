@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Ai\AnalystToolService;
 use App\Services\Ai\AnswerTagFilter;
 use App\Services\Ai\ImageAttachment;
+use App\Services\Ai\MarkdownStripFilter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -326,6 +327,29 @@ class AiChatTest extends TestCase
 
         $assistant = DB::table('ai_messages')->where('user_id', $user->id)->where('role', 'assistant')->first();
         $this->assertNotNull($assistant->error);
+    }
+
+    public function test_gemini_quota_exhaustion_becomes_a_distinct_error_message(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response(
+            json_encode(['error' => ['code' => 429, 'status' => 'RESOURCE_EXHAUSTED', 'message' => 'quota exceeded']]),
+            429
+        )]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'How am I doing?']);
+
+        $body = $response->assertStatus(200)->streamedContent();
+        $names = array_column($this->events($body), 1);
+
+        $this->assertSame(['meta', 'error', 'update'], $names);
+        $this->assertStringContainsString('The AI assistant is busy right now. Please try again in a few minutes.', $body);
+
+        $assistant = DB::table('ai_messages')->where('user_id', $user->id)->where('role', 'assistant')->first();
+        $this->assertSame('The AI assistant is busy right now. Please try again in a few minutes.', $assistant->error);
     }
 
     public function test_chat_requires_authentication_and_uses_the_normal_envelope_for_validation(): void
@@ -764,6 +788,54 @@ class AiChatTest extends TestCase
         // An opener the model never closed is discarded at flush, not leaked as raw markup.
         $dangling = new AnswerTagFilter($user->id);
         $this->assertSame('done ', $dangling->push('done [[transaction:01J').$dangling->flush());
+    }
+
+    public function test_chat_strips_markdown_formatting_from_the_answer(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+
+        // Split across deltas the same way a real tag can — the closing "**" of the bold run
+        // arrives in a later chunk than its opener.
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response($this->sse([
+            $this->textFrame("# Summary\nYou spent **"),
+            $this->textFrame('84.20** on groceries.', 'STOP'),
+        ]))]);
+
+        $body = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'How am I doing?'])
+            ->assertStatus(200)
+            ->streamedContent();
+
+        $this->assertStringNotContainsString('**', $body);
+        $this->assertStringNotContainsString('# ', $body);
+
+        $content = DB::table('ai_messages')
+            ->where('user_id', $user->id)->where('role', 'assistant')->value('content');
+
+        $this->assertSame("Summary\nYou spent 84.20 on groceries.", $content);
+    }
+
+    public function test_markdown_strip_filter_handles_headings_lists_code_and_stream_splits(): void
+    {
+        $filter = new MarkdownStripFilter;
+        $this->assertSame(
+            "Total\nGroceries\nRent\nCode 8420 was used.",
+            $filter->push("# Total\n- Groceries\n* Rent\n`Code ").$filter->push('8420` was used.').$filter->flush()
+        );
+
+        // A bold run split across three pushes never leaks a stray "*" onto the wire.
+        $split = new MarkdownStripFilter;
+        $out = $split->push('spent **8').$split->push('4.20').$split->push('** today');
+        $this->assertSame('spent 84.20 today', $out.$split->flush());
+
+        // An opener the model never closes is released as plain text, not dropped.
+        $dangling = new MarkdownStripFilter;
+        $this->assertSame('be **careful', $dangling->push('be **careful').$dangling->flush());
+
+        // A single '#' with no following space is ordinary text, not a heading marker.
+        $hashtag = new MarkdownStripFilter;
+        $this->assertSame('#1 category: rent', $hashtag->push('#1 category: rent').$hashtag->flush());
     }
 
     public function test_row_tools_return_ids_and_transfers_are_user_scoped(): void

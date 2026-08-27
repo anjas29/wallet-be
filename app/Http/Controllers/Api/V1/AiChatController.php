@@ -79,6 +79,10 @@ class AiChatController extends Controller
      * Parse against the accumulated answer, not a single `delta` — a tag routinely straddles two
      * or three of them. Text without a tag always reads correctly on its own, so a client that
      * ignores this can simply strip the markers.
+     *
+     * Answer text is always plain — the server strips any Markdown the model produces (bold,
+     * headings, lists, backticks) before streaming it, so `[[type:id]]` tags are the only markup
+     * you will ever see.
      */
     public function chat(Request $request)
     {
