@@ -76,7 +76,7 @@ class ReceiptScanService
 
     private function callGemini(string $apiKey, UploadedFile $file, Collection $categories, Collection $currencyCodes): array
     {
-        $model = config('services.gemini.model', 'gemini-3.6-flash');
+        $model = config('services.gemini.model', 'gemini-3.1-flash-lite');
         $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
 
         $payload = [

@@ -36,7 +36,7 @@ class GeminiStreamClient
             throw new AiChatException('AI chat is not configured.', 500);
         }
 
-        $model = config('services.gemini.model', 'gemini-3.6-flash');
+        $model = config('services.gemini.model', 'gemini-3.1-flash-lite');
         $url = self::BASE."/{$model}:streamGenerateContent?alt=sse";
 
         try {
@@ -55,6 +55,10 @@ class GeminiStreamClient
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
+
+            if ($response->status() === 429) {
+                throw new AiChatException('The AI assistant is busy right now. Please try again in a few minutes.', 429);
+            }
 
             throw new AiChatException('The AI service returned an error.', 502);
         }
