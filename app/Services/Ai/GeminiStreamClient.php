@@ -23,7 +23,7 @@ class GeminiStreamClient
     /**
      * Yields normalised parts as they arrive:
      *   ['type' => 'text',         'text' => string]
-     *   ['type' => 'functionCall', 'call' => ['name' => string, 'args' => array]]
+     *   ['type' => 'functionCall', 'call' => ['name' => string, 'args' => array], 'thoughtSignature' => ?string]
      *   ['type' => 'finish',       'reason' => string]
      *
      * @return Generator<int, array<string, mixed>>
@@ -114,7 +114,7 @@ class GeminiStreamClient
             }
 
             if (isset($part['functionCall'])) {
-                yield ['type' => 'functionCall', 'call' => $part['functionCall']];
+                yield ['type' => 'functionCall', 'call' => $part['functionCall'], 'thoughtSignature' => $part['thoughtSignature'] ?? null];
             }
         }
 

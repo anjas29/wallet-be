@@ -93,10 +93,16 @@ class AiChatTest extends TestCase
         return ['candidates' => [$candidate]];
     }
 
-    private function callFrame(string $name, array $args): array
+    private function callFrame(string $name, array $args, ?string $thoughtSignature = null): array
     {
+        $part = ['functionCall' => ['name' => $name, 'args' => $args]];
+
+        if ($thoughtSignature !== null) {
+            $part['thoughtSignature'] = $thoughtSignature;
+        }
+
         return ['candidates' => [[
-            'content' => ['role' => 'model', 'parts' => [['functionCall' => ['name' => $name, 'args' => $args]]]],
+            'content' => ['role' => 'model', 'parts' => [$part]],
         ]]];
     }
 
@@ -185,6 +191,32 @@ class AiChatTest extends TestCase
         $result = $second['contents'][2]['parts'][0]['functionResponse']['response']['result'];
         $this->assertSame('40.00', $result['total']);
         $this->assertSame('Groceries', $result['categories'][0]['category']);
+    }
+
+    /**
+     * Gemini 3 attaches a `thoughtSignature` next to a functionCall part and rejects the next
+     * request if it isn't echoed back verbatim (400 INVALID_ARGUMENT: "missing a
+     * thought_signature"). That upstream 400 previously surfaced to the user as a generic
+     * "AI service returned an error" — this pins the round trip that avoids it.
+     */
+    public function test_chat_echoes_the_thought_signature_back_on_the_next_tool_round_trip(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
+            ->push($this->sse([$this->callFrame('get_account_balances', [], 'sig-abc123')]))
+            ->push($this->sse([$this->textFrame('You hold 100.00 USD.', 'STOP')]))]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'What is my balance?']);
+
+        $response->assertStatus(200)->streamedContent();
+
+        $second = Http::recorded()[1][0]->data();
+
+        $this->assertSame('sig-abc123', $second['contents'][1]['parts'][0]['thoughtSignature']);
+        $this->assertSame('get_account_balances', $second['contents'][1]['parts'][0]['functionCall']['name']);
     }
 
     public function test_chat_forces_an_answer_when_the_tool_loop_hits_its_cap(): void
