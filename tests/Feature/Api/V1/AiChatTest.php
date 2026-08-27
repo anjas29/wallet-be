@@ -107,6 +107,29 @@ class AiChatTest extends TestCase
     }
 
     /**
+     * A single candidate carrying several functionCall parts at once, the way Gemini returns
+     * parallel tool calls. Each entry is [name, args, thoughtSignature|null].
+     */
+    private function parallelCallFrame(array $calls): array
+    {
+        $parts = array_map(function (array $entry) {
+            [$name, $args, $signature] = [$entry[0], $entry[1], $entry[2] ?? null];
+
+            $part = ['functionCall' => ['name' => $name, 'args' => $args]];
+
+            if ($signature !== null) {
+                $part['thoughtSignature'] = $signature;
+            }
+
+            return $part;
+        }, $calls);
+
+        return ['candidates' => [[
+            'content' => ['role' => 'model', 'parts' => $parts],
+        ]]];
+    }
+
+    /**
      * @return array<string, string> event name => data payload, in arrival order
      */
     private function events(string $body): array
@@ -217,6 +240,41 @@ class AiChatTest extends TestCase
 
         $this->assertSame('sig-abc123', $second['contents'][1]['parts'][0]['thoughtSignature']);
         $this->assertSame('get_account_balances', $second['contents'][1]['parts'][0]['functionCall']['name']);
+    }
+
+    /**
+     * Gemini 3 is documented to attach a thought_signature only to the first part of a parallel
+     * (multi-tool) call, but has a known upstream bug where it sometimes drops even that one once
+     * 3+ tools are requested at once. Without a fallback, the next request comes back 400
+     * "missing a thought_signature", surfaced to the user as "The AI service returned an error."
+     */
+    public function test_chat_falls_back_to_a_placeholder_signature_when_gemini_omits_it_on_a_parallel_call(): void
+    {
+        [$user, $token] = $this->authUser();
+        $this->seedBaseline($user);
+
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::sequence()
+            ->push($this->sse([$this->parallelCallFrame([
+                ['get_account_balances', []],
+                ['get_budget_status', []],
+                ['get_income_expense_summary', []],
+            ])]))
+            ->push($this->sse([$this->textFrame('Here is your overview.', 'STOP')]))]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/ai/chat', ['message' => 'Give me a full overview.']);
+
+        $body = $response->assertStatus(200)->streamedContent();
+        $names = array_column($this->events($body), 1);
+
+        $this->assertSame(['meta', 'tool', 'tool', 'tool', 'delta', 'done', 'update'], $names);
+
+        $second = Http::recorded()[1][0]->data();
+        $parts = $second['contents'][1]['parts'];
+
+        $this->assertSame('skip_thought_signature_validator', $parts[0]['thoughtSignature']);
+        $this->assertArrayNotHasKey('thoughtSignature', $parts[1]);
+        $this->assertArrayNotHasKey('thoughtSignature', $parts[2]);
     }
 
     public function test_chat_forces_an_answer_when_the_tool_loop_hits_its_cap(): void
