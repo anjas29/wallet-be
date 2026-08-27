@@ -26,6 +26,16 @@ use Throwable;
  */
 class AiChatService
 {
+    /**
+     * Gemini 3 requires a `thought_signature` on the first functionCall part of a parallel
+     * (multi-tool) turn, but has a known upstream inconsistency where it sometimes omits it once
+     * 3+ tools are called at once — see https://github.com/googleapis/js-genai/issues/1275. That
+     * omission previously made the *next* request come back 400 "missing a thought_signature",
+     * which this service surfaced as the generic "AI service returned an error." Google documents
+     * this exact string as the escape hatch for a missing signature.
+     */
+    private const FALLBACK_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
+
     private const SYSTEM_PROMPT = <<<'TXT'
         You are a personal finance analyst embedded in a wallet app. Answer the user's questions
         about their own finances.
@@ -244,11 +254,16 @@ class AiChatService
                 }
 
                 $contents[] = ['role' => 'model', 'parts' => array_map(
-                    fn (array $entry) => array_filter([
+                    fn (array $entry, int $index) => array_filter([
                         'functionCall' => $entry['call'],
-                        'thoughtSignature' => $entry['thoughtSignature'],
+                        // Only the first part is required to carry a signature; the rest are
+                        // sent as Gemini returned them (usually none at all).
+                        'thoughtSignature' => $index === 0
+                            ? ($entry['thoughtSignature'] ?? self::FALLBACK_THOUGHT_SIGNATURE)
+                            : $entry['thoughtSignature'],
                     ], fn ($value) => $value !== null),
-                    $calls
+                    $calls,
+                    array_keys($calls)
                 )];
 
                 $responses = [];
