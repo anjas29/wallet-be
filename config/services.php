@@ -37,7 +37,7 @@ return [
 
     'gemini' => [
         'key' => env('GEMINI_API_KEY'),
-        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.1-flash-lite'),
 
         // Max Gemini round trips per AI-analyst turn. One iteration may execute several
         // tools (the model can emit parallel functionCall parts), so this bounds cost and

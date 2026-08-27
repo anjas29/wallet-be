@@ -36,7 +36,7 @@ class GeminiStreamClient
             throw new AiChatException('AI chat is not configured.', 500);
         }
 
-        $model = config('services.gemini.model', 'gemini-3.6-flash');
+        $model = config('services.gemini.model', 'gemini-3.1-flash-lite');
         $url = self::BASE."/{$model}:streamGenerateContent?alt=sse";
 
         try {
