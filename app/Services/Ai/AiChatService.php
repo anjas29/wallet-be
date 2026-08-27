@@ -208,7 +208,7 @@ class AiChatService
 
                 foreach ($this->gemini->stream($this->payload($user->id, $contents, $forceAnswer)) as $part) {
                     if ($part['type'] === 'functionCall') {
-                        $calls[] = $part['call'];
+                        $calls[] = ['call' => $part['call'], 'thoughtSignature' => $part['thoughtSignature']];
 
                         continue;
                     }
@@ -244,13 +244,17 @@ class AiChatService
                 }
 
                 $contents[] = ['role' => 'model', 'parts' => array_map(
-                    fn (array $call) => ['functionCall' => $call],
+                    fn (array $entry) => array_filter([
+                        'functionCall' => $entry['call'],
+                        'thoughtSignature' => $entry['thoughtSignature'],
+                    ], fn ($value) => $value !== null),
                     $calls
                 )];
 
                 $responses = [];
 
-                foreach ($calls as $call) {
+                foreach ($calls as $entry) {
+                    $call = $entry['call'];
                     $name = (string) ($call['name'] ?? '');
 
                     yield new StreamedEvent('tool', ['name' => $name]);
