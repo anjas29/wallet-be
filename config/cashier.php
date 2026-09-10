@@ -18,9 +18,12 @@ return [
     |
     */
 
-    'key' => env('STRIPE_KEY'),
+    // `?: null` matters here: a var present in .env but left blank (as .env.example ships
+    // them) resolves to '', and Stripe's SDK throws on an empty-string api_key while
+    // explicitly tolerating null — so treat blank the same as unset.
+    'key' => env('STRIPE_KEY') ?: null,
 
-    'secret' => env('STRIPE_SECRET'),
+    'secret' => env('STRIPE_SECRET') ?: null,
 
     /*
     |--------------------------------------------------------------------------
