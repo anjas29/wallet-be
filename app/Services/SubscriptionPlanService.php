@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SubscriptionPlan;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\StripeClient;
 
 /**
@@ -119,10 +120,19 @@ class SubscriptionPlanService
      * Deactivate a plan locally and archive its Stripe Price, so it can no longer be picked
      * for a new subscription. Existing subscribers are untouched — this never deletes the row
      * (an active Stripe Price can be reactivated later; the local plan is just a display gate).
+     *
+     * Tolerates the Price already being gone on Stripe's side (e.g. deleted directly in the
+     * Stripe dashboard) — there's nothing left to archive, so just apply the local change.
      */
     public function archive(SubscriptionPlan $plan): void
     {
-        $this->stripe->prices->update($plan->stripe_price_id, ['active' => false]);
+        try {
+            $this->stripe->prices->update($plan->stripe_price_id, ['active' => false]);
+        } catch (InvalidRequestException $e) {
+            if ($e->getStripeCode() !== 'resource_missing') {
+                throw $e;
+            }
+        }
 
         $plan->update(['is_active' => false]);
     }
