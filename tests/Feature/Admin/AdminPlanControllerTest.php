@@ -214,4 +214,45 @@ class AdminPlanControllerTest extends TestCase
         $response->assertRedirect('/admin/plans');
         $this->assertDatabaseHas('subscription_plans', ['id' => $plan->id, 'is_active' => false]);
     }
+
+    public function test_marking_a_plan_as_anchor_unmarks_every_other_plan(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $existingAnchor = $this->makePlan(['slug' => 'basic', 'stripe_price_id' => 'price_basic', 'is_anchor' => true]);
+        [$products, $prices] = $this->fakeStripe();
+
+        $prices->shouldReceive('retrieve')->once()->with('price_basic')->andReturn((object) ['product' => 'prod_basic']);
+        $products->shouldReceive('update')->once()->andReturn((object) ['id' => 'prod_basic']);
+        $prices->shouldReceive('update')->once()->andReturnNull();
+
+        $response = $this->actingAs($admin)->post("/admin/plans/{$existingAnchor->id}", [
+            'slug' => 'basic',
+            'name' => 'Basic',
+            'price_amount' => 499,
+            'interval' => 'month',
+            'is_active' => '1',
+            'is_anchor' => '1',
+        ]);
+
+        $response->assertRedirect('/admin/plans');
+        $this->assertDatabaseHas('subscription_plans', ['id' => $existingAnchor->id, 'is_anchor' => true]);
+
+        // Now create a second plan as the anchor — the first should lose the flag.
+        [$products, $prices] = $this->fakeStripe();
+
+        $products->shouldReceive('create')->once()->andReturn((object) ['id' => 'prod_pro']);
+        $prices->shouldReceive('create')->once()->andReturn((object) ['id' => 'price_pro']);
+
+        $this->actingAs($admin)->post('/admin/plans', [
+            'slug' => 'pro',
+            'name' => 'Pro',
+            'price_amount' => 999,
+            'interval' => 'month',
+            'is_active' => '1',
+            'is_anchor' => '1',
+        ])->assertRedirect('/admin/plans');
+
+        $this->assertDatabaseHas('subscription_plans', ['slug' => 'pro', 'is_anchor' => true]);
+        $this->assertDatabaseHas('subscription_plans', ['id' => $existingAnchor->id, 'is_anchor' => false]);
+    }
 }
