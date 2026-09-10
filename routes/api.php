@@ -10,11 +10,13 @@ use App\Http\Controllers\Api\V1\MiscController;
 use App\Http\Controllers\Api\V1\ReceiptController;
 use App\Http\Controllers\Api\V1\RecurringTransactionController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SyncPullController;
 use App\Http\Controllers\Api\V1\SyncPushController;
 use App\Http\Controllers\Api\V1\TransactionController;
 use App\Http\Controllers\SslTestController;
 use Illuminate\Support\Facades\Route;
+use Laravel\Cashier\Http\Controllers\WebhookController as StripeWebhookController;
 
 Route::prefix('v1')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
@@ -27,6 +29,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/currencies/{id}', [MiscController::class, 'showCurrency']);
     Route::get('/categories', [MiscController::class, 'categories']);
     Route::get('/categories/{id}', [MiscController::class, 'showCategory']);
+
+    // Subscription plans — public, so a pricing/paywall screen can list them pre-login.
+    Route::get('/subscription-plans', [SubscriptionController::class, 'plans']);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -69,6 +74,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/recurring-transactions', [RecurringTransactionController::class, 'index']);
         Route::get('/recurring-transactions/{id}', [RecurringTransactionController::class, 'show']);
 
+        // Subscriptions. POST / returns a Stripe Checkout URL (hosted payment page) rather
+        // than an activated subscription — see SubscriptionController::store().
+        Route::get('/subscriptions/me', [SubscriptionController::class, 'show']);
+        Route::post('/subscriptions', [SubscriptionController::class, 'store']);
+        Route::post('/subscriptions/swap', [SubscriptionController::class, 'swap']);
+        Route::post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
+        Route::post('/subscriptions/resume', [SubscriptionController::class, 'resume']);
+
         // Offline-first sync: batch read (pull) + batch write (push)
         Route::get('/sync/pull', [SyncPullController::class, 'index']);
         Route::post('/sync/push', [SyncPushController::class, 'store']);
@@ -91,6 +104,13 @@ Route::prefix('v1')->group(function () {
         });
     });
 });
+
+/*
+| Stripe webhook (unauthenticated, Stripe-signature verified by Cashier's own
+| VerifyWebhookSignature middleware — see config('cashier.webhook.secret')). Kept out of
+| the /v1 group on purpose: it's Stripe calling us, not a mobile-app endpoint.
+*/
+Route::post('/webhooks/stripe', [StripeWebhookController::class, 'handleWebhook']);
 
 /*
 | SSL pinning test harness (unversioned, non-prod only).

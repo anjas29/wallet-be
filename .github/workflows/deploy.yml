@@ -80,7 +80,6 @@ jobs:
             cd ${{ secrets.VPS_APP_PATH }}
             git pull origin main
             cd ${{ secrets.VPS_DOCKER_COMPOSE_PATH }}
-            # docker compose up -d --build --remove-orphans
-            docker compose up -d
+            docker compose up -d --build --remove-orphans
             docker compose exec -T app php artisan migrate --force
             docker compose exec -T app php artisan optimize:clear
