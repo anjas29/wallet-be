@@ -34,6 +34,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the user may sign in to the admin panel.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'super_admin',
+        ]);
+    }
+
+    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

@@ -60,7 +60,15 @@ class AuthTokenService
             throw new RefreshTokenException('Refresh token has expired.');
         }
 
+        // Null once the account is soft-deleted (User uses SoftDeletes, so the relation is
+        // scoped): a token that outlived its account is not refreshable.
         $user = $record->user;
+
+        if ($user === null) {
+            $record->update(['revoked_at' => now()]);
+
+            throw new RefreshTokenException('Invalid refresh token.');
+        }
 
         // Rotate: revoke the presented token and mint a successor in the same family.
         $record->update(['revoked_at' => now()]);
