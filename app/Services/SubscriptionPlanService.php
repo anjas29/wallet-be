@@ -20,18 +20,24 @@ class SubscriptionPlanService
      */
     public function create(array $data): SubscriptionPlan
     {
-        $product = $this->stripe->products->create([
-            'name' => $data['name'],
-            'description' => $data['description'] ?? null,
-        ]);
+        // Different local databases (e.g. a dev machine and a staging/production server) can
+        // share the same Stripe account — a plan with no local row yet may still already have a
+        // Stripe Price under this lookup key. Reuse/replace it rather than colliding on create.
+        $existingPrice = $this->findPriceByLookupKey($data['slug']);
 
-        $price = $this->stripe->prices->create([
-            'product' => $product->id,
-            'unit_amount' => $data['price_amount'],
-            'currency' => config('cashier.currency'),
-            'recurring' => ['interval' => $data['interval'], 'interval_count' => $data['interval_count'] ?? 1],
-            'lookup_key' => $data['slug'],
-        ]);
+        if ($existingPrice) {
+            $productId = $this->stripe->products->update($existingPrice->product, [
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+            ])->id;
+        } else {
+            $productId = $this->stripe->products->create([
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+            ])->id;
+        }
+
+        $price = $this->resolvePrice($existingPrice, $productId, $data);
 
         $plan = SubscriptionPlan::create([
             'slug' => $data['slug'],
@@ -62,36 +68,19 @@ class SubscriptionPlanService
      */
     public function update(SubscriptionPlan $plan, array $data): SubscriptionPlan
     {
-        $productId = $this->stripe->prices->retrieve($plan->stripe_price_id)->product;
+        $currentPrice = $this->stripe->prices->retrieve($plan->stripe_price_id);
+        $productId = $currentPrice->product;
 
         $this->stripe->products->update($productId, [
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
         ]);
 
-        $intervalCount = $data['interval_count'] ?? 1;
+        $price = $this->resolvePrice($currentPrice, $productId, $data);
 
-        $priceChanged = (int) $data['price_amount'] !== (int) $plan->price_amount
-            || $data['interval'] !== $plan->interval
-            || $intervalCount !== $plan->interval_count;
-
-        if ($priceChanged) {
-            $newPrice = $this->stripe->prices->create([
-                'product' => $productId,
-                'unit_amount' => $data['price_amount'],
-                'currency' => config('cashier.currency'),
-                'recurring' => ['interval' => $data['interval'], 'interval_count' => $intervalCount],
-                'lookup_key' => $data['slug'],
-                'transfer_lookup_key' => true,
-            ]);
-
-            $this->stripe->prices->update($plan->stripe_price_id, ['active' => false]);
-
-            $stripePriceId = $newPrice->id;
-        } else {
-            $stripePriceId = $plan->stripe_price_id;
-
-            $this->stripe->prices->update($stripePriceId, [
+        if ($price->id === $currentPrice->id) {
+            // Amount/interval didn't change, but is_active or the slug (lookup_key) might have.
+            $this->stripe->prices->update($price->id, [
                 'active' => (bool) ($data['is_active'] ?? true),
                 'lookup_key' => $data['slug'],
             ]);
@@ -102,9 +91,9 @@ class SubscriptionPlanService
             'description' => $data['description'] ?? null,
             'price_amount' => $data['price_amount'],
             'interval' => $data['interval'],
-            'interval_count' => $intervalCount,
+            'interval_count' => $data['interval_count'] ?? 1,
             'features' => $data['features'] ?? [],
-            'stripe_price_id' => $stripePriceId,
+            'stripe_price_id' => $price->id,
             'is_active' => $data['is_active'] ?? true,
             'is_anchor' => $data['is_anchor'] ?? false,
             'sort_order' => $data['sort_order'] ?? 0,
@@ -136,5 +125,49 @@ class SubscriptionPlanService
         $this->stripe->prices->update($plan->stripe_price_id, ['active' => false]);
 
         $plan->update(['is_active' => false]);
+    }
+
+    private function findPriceByLookupKey(string $lookupKey): ?object
+    {
+        $result = $this->stripe->prices->all(['lookup_keys' => [$lookupKey], 'limit' => 1]);
+
+        return $result->data[0] ?? null;
+    }
+
+    /**
+     * Reuses $existing when it already matches the desired amount/interval/product, otherwise
+     * creates a new Price (transferring the lookup key onto it) and archives $existing.
+     *
+     * @param  array{price_amount: int, interval: string, interval_count?: int, slug: string}  $data
+     *
+     * Untyped (not `Stripe\Price`) because Stripe's SDK responses are only ever read via
+     * duck-typed property access here, never constructed — real usage gets a real Price object,
+     * tests stub a plain stdClass with the same shape (see AdminPlanControllerTest::stripePrice()).
+     */
+    private function resolvePrice(?object $existing, string $productId, array $data): object
+    {
+        $intervalCount = $data['interval_count'] ?? 1;
+
+        if ($existing) {
+            $unchanged = $existing->unit_amount === $data['price_amount']
+                && $existing->recurring->interval === $data['interval']
+                && $existing->recurring->interval_count === $intervalCount
+                && $existing->product === $productId;
+
+            if ($unchanged) {
+                return $existing;
+            }
+
+            $this->stripe->prices->update($existing->id, ['active' => false]);
+        }
+
+        return $this->stripe->prices->create([
+            'product' => $productId,
+            'unit_amount' => $data['price_amount'],
+            'currency' => config('cashier.currency'),
+            'recurring' => ['interval' => $data['interval'], 'interval_count' => $intervalCount],
+            'lookup_key' => $data['slug'],
+            'transfer_lookup_key' => true,
+        ]);
     }
 }
