@@ -12,10 +12,40 @@ class SubscriptionService
 {
     public function activePlans(): Collection
     {
-        return SubscriptionPlan::where('is_active', true)
+        $plans = SubscriptionPlan::where('is_active', true)
             ->whereNotNull('stripe_price_id')
             ->orderBy('sort_order')
             ->get();
+
+        return $this->attachPricingMeta($plans);
+    }
+
+    /**
+     * Attaches `price_saved` and `best_value` — computed store-wide against whichever plan is
+     * flagged `is_anchor`, normalized to a monthly rate so plans on different billing intervals
+     * (monthly/quarterly/yearly) are comparable. Not persisted; read by SubscriptionPlanResource.
+     */
+    private function attachPricingMeta(Collection $plans): Collection
+    {
+        if ($plans->isEmpty()) {
+            return $plans;
+        }
+
+        $anchor = $plans->firstWhere('is_anchor', true);
+        $anchorMonthlyPrice = $anchor?->monthlyPriceCents();
+        $cheapestMonthlyPrice = $plans->min(fn (SubscriptionPlan $plan) => $plan->monthlyPriceCents());
+
+        foreach ($plans as $plan) {
+            $monthlyPrice = $plan->monthlyPriceCents();
+
+            $plan->setAttribute(
+                'price_saved',
+                $anchorMonthlyPrice !== null ? ($anchorMonthlyPrice * $plan->totalMonths()) - $plan->price_amount : null,
+            );
+            $plan->setAttribute('best_value', $monthlyPrice === $cheapestMonthlyPrice);
+        }
+
+        return $plans;
     }
 
     public function findActivePlan(string $id): ?SubscriptionPlan

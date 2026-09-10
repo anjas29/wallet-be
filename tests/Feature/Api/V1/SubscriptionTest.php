@@ -41,6 +41,40 @@ class SubscriptionTest extends TestCase
             ->assertJsonCount(2, 'data.items');
     }
 
+    public function test_plan_listing_includes_currency_normalized_monthly_price_and_savings_vs_the_anchor(): void
+    {
+        $this->makePlan([
+            'slug' => 'anchor-monthly', 'price_amount' => 1000,
+            'interval' => 'month', 'interval_count' => 1, 'is_anchor' => true,
+        ]);
+        $this->makePlan([
+            'slug' => 'quarterly', 'price_amount' => 2700,
+            'interval' => 'month', 'interval_count' => 3,
+        ]);
+        $this->makePlan([
+            'slug' => 'yearly', 'price_amount' => 9600,
+            'interval' => 'year', 'interval_count' => 1,
+        ]);
+
+        $items = collect($this->getJson('/api/v1/subscription-plans')->assertStatus(200)->json('data.items'))
+            ->keyBy('slug');
+
+        $this->assertSame('usd', $items['anchor-monthly']['currency']);
+        $this->assertSame(1000, $items['anchor-monthly']['monthly_price']);
+        $this->assertSame(0, $items['anchor-monthly']['price_saved']);
+        $this->assertFalse($items['anchor-monthly']['best_value']);
+
+        // $27/quarter normalizes to $9/mo — cheaper than the $10/mo anchor, but not the cheapest.
+        $this->assertSame(900, $items['quarterly']['monthly_price']);
+        $this->assertSame(300, $items['quarterly']['price_saved']);
+        $this->assertFalse($items['quarterly']['best_value']);
+
+        // $96/year normalizes to $8/mo — the cheapest of the three.
+        $this->assertSame(800, $items['yearly']['monthly_price']);
+        $this->assertSame(2400, $items['yearly']['price_saved']);
+        $this->assertTrue($items['yearly']['best_value']);
+    }
+
     public function test_current_subscription_is_none_for_a_user_with_no_subscription(): void
     {
         $user = User::factory()->create();

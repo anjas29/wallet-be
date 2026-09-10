@@ -60,6 +60,13 @@
         </div>
 
         <div class="field">
+            <label for="interval_count">Every</label>
+            <input id="interval_count" name="interval_count" type="number" min="1" max="12"
+                   value="{{ old('interval_count', $plan->interval_count ?? 1) }}">
+            <small>e.g. interval "Monthly" + 3 = billed every 3 months (quarterly).</small>
+        </div>
+
+        <div class="field">
             <label for="trial_days">Free trial (days)</label>
             <input id="trial_days" name="trial_days" type="number" min="0" max="3650"
                    value="{{ old('trial_days', $plan->trial_days) }}">
@@ -81,6 +88,16 @@
             <input id="is_active" name="is_active" type="checkbox" value="1"
                    @checked(old('is_active', $plan->exists ? $plan->is_active : true))>
             <label for="is_active">Active — visible to new subscribers</label>
+        </div>
+
+        <div class="check">
+            <input id="is_anchor" name="is_anchor" type="checkbox" value="1"
+                   @checked(old('is_anchor', $plan->is_anchor ?? false))>
+            <label for="is_anchor">
+                Anchor plan — every other plan's "price saved" / "best value" is compared
+                against this one's monthly rate. Only one plan can be the anchor; checking
+                this here unchecks it everywhere else.
+            </label>
         </div>
 
         <button class="btn-primary" type="submit">{{ $mode === 'create' ? 'Create plan' : 'Save changes' }}</button>

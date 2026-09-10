@@ -57,7 +57,7 @@ class PlanController extends Controller
     }
 
     /**
-     * @return array{slug: string, name: string, description: ?string, price_amount: int, interval: string, features: array<int, string>, is_active: bool, sort_order: int, trial_days: ?int}
+     * @return array{slug: string, name: string, description: ?string, price_amount: int, interval: string, interval_count: int, features: array<int, string>, is_active: bool, is_anchor: bool, sort_order: int, trial_days: ?int}
      */
     private function validated(Request $request, ?SubscriptionPlan $plan = null): array
     {
@@ -70,10 +70,12 @@ class PlanController extends Controller
             'description' => ['nullable', 'string'],
             'price_amount' => ['required', 'integer', 'min:1'],
             'interval' => ['required', 'in:month,year'],
+            'interval_count' => ['nullable', 'integer', 'min:1', 'max:12'],
             'trial_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'features' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['boolean'],
+            'is_anchor' => ['boolean'],
         ]);
 
         $data['features'] = collect(preg_split('/\r?\n/', $data['features'] ?? ''))
@@ -83,6 +85,8 @@ class PlanController extends Controller
             ->all();
 
         $data['is_active'] = $request->boolean('is_active');
+        $data['is_anchor'] = $request->boolean('is_anchor');
+        $data['interval_count'] = $data['interval_count'] ?? 1;
         $data['sort_order'] = $data['sort_order'] ?? 0;
 
         return $data;

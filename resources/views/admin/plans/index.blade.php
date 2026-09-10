@@ -45,10 +45,14 @@
                 <tr>
                     <td>
                         {{ $plan->name }}
+                        @if ($plan->is_anchor)
+                            <span class="tag tag-active">anchor</span>
+                        @endif
                         <div class="muted small"><code>{{ $plan->slug }}</code></div>
                     </td>
                     <td>
-                        {{ number_format($plan->price_amount / 100, 2) }} / {{ $plan->interval }}
+                        {{ number_format($plan->price_amount / 100, 2) }} /
+                        {{ $plan->interval_count > 1 ? "{$plan->interval_count} {$plan->interval}s" : $plan->interval }}
                         <div class="muted small"><code>{{ $plan->stripe_price_id }}</code></div>
                     </td>
                     <td>{{ $plan->trial_days ? "{$plan->trial_days} days" : '—' }}</td>

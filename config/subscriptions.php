@@ -21,6 +21,11 @@ return [
     | trial_period_days`, and only for a user's first subscription (see
     | SubscriptionService::trialDaysFor()) so cancel-and-resubscribe can't repeat it.
     |
+    | `is_anchor` marks the one plan every other plan's `price_saved`/`best_value` (see
+    | SubscriptionService::activePlans()) is normalized against — exactly one plan should
+    | have this set. `interval_count` mirrors Stripe's `recurring.interval_count` (e.g.
+    | interval=month, interval_count=3 for quarterly); omit it for the default of 1.
+    |
     */
 
     'plans' => [
@@ -30,6 +35,8 @@ return [
             'description' => 'Core budgeting features for a single user.',
             'price_amount' => 499,
             'interval' => 'month',
+            'interval_count' => 1,
+            'is_anchor' => true,
             'trial_days' => 30,
             'features' => [
                 'unlimited_accounts',
@@ -43,6 +50,7 @@ return [
             'description' => 'Basic, plus AI-powered insights and receipt scanning.',
             'price_amount' => 999,
             'interval' => 'month',
+            'interval_count' => 1,
             'trial_days' => 30,
             'features' => [
                 'unlimited_accounts',
