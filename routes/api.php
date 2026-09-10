@@ -78,9 +78,13 @@ Route::prefix('v1')->group(function () {
         // than an activated subscription — see SubscriptionController::store().
         Route::get('/subscriptions/me', [SubscriptionController::class, 'show']);
         Route::post('/subscriptions', [SubscriptionController::class, 'store']);
-        Route::post('/subscriptions/swap', [SubscriptionController::class, 'swap']);
         Route::post('/subscriptions/cancel', [SubscriptionController::class, 'cancel']);
-        Route::post('/subscriptions/resume', [SubscriptionController::class, 'resume']);
+
+        // Swap (change plan) and resume (undo a pending cancellation) are deliberately not
+        // routed yet — the mobile app has no UI for either. The controller/service methods
+        // are still there and tested; re-add these two routes once that UI exists.
+        // Route::post('/subscriptions/swap', [SubscriptionController::class, 'swap']);
+        // Route::post('/subscriptions/resume', [SubscriptionController::class, 'resume']);
 
         // Offline-first sync: batch read (pull) + batch write (push)
         Route::get('/sync/pull', [SyncPullController::class, 'index']);
