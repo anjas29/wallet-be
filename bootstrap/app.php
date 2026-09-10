@@ -27,6 +27,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
         ]);
+
+        // Trust the reverse proxy chain (Traefik terminates TLS, then Nginx) so Laravel reads
+        // X-Forwarded-Proto/Host from it — otherwise every URL it generates (redirects, form
+        // actions) comes back as http:// even though the browser is on https://. Safe to trust
+        // '*' here: only Nginx's port is reachable from outside the app's Docker network.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
