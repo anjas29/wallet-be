@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 4 September 2026_
+_Last updated: 15 September 2026_
 
 SpendWise ("SpendWise", "the App", "we", "us", or "our") is a personal finance
 tracking application operated by an individual developer based in Indonesia.
@@ -19,7 +19,7 @@ in or receipts you uploaded — it is not a financial account.
 SpendWise is operated by an individual developer. For any privacy question,
 request, or complaint, you can reach us at:
 
-- Email: `noname@gmail.com`
+- Email: `anjas.adi.nugroho29@gmail.com`
 
 Because SpendWise is run by an individual rather than a registered company,
 this Privacy Policy is written to be honest about that scale — we do not
@@ -129,9 +129,11 @@ security purposes) for a short additional period.
 You may, at any time:
 
 - Access, correct, or export the data you have entered in the App.
-- Delete individual entries, or delete your entire account, from within the
-  App or by emailing us at `noname@gmail.com`.
-- Ask us what personal data we hold about you and request its deletion.
+- Delete individual entries from within the App, or request deletion of your
+  entire account and its data at
+  [wallet.birchlabs.tech/account-delete-request](https://wallet.birchlabs.tech/account-delete-request) —
+  no need to email us.
+- Ask us what personal data we hold about you.
 
 If you are located in Indonesia, these rights are provided consistent with
 Law No. 27 of 2022 on Personal Data Protection (UU PDP). If you are located
@@ -162,4 +164,4 @@ SpendWise after a change means you accept the updated policy.
 ## 12. Contact Us
 
 Questions, requests, or complaints about this Privacy Policy or your data
-can be sent to: `noname@gmail.com`.
+can be sent to: `anjas.adi.nugroho29@gmail.com`.

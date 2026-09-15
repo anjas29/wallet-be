@@ -1,6 +1,6 @@
 # Terms & Conditions
 
-_Last updated: 4 September 2026_
+_Last updated: 15 September 2026_
 
 These Terms & Conditions ("Terms") govern your use of SpendWise ("SpendWise",
 "the App", "we", "us", or "our"), a personal finance tracking application
@@ -32,7 +32,7 @@ responsible for decisions you make based on them.
 By registering an account, you confirm that you are at least 13 years old
 (or the minimum age of digital consent in your country, if higher) and that
 you agree to be bound by these Terms and our
-[Privacy Policy](./privacy-policy.md).
+[Privacy Policy](/privacy-policy).
 
 ## 3. User Accounts
 
@@ -42,8 +42,8 @@ you agree to be bound by these Terms and our
   date.
 - You are responsible for the accuracy of any financial data you enter — we
   do not verify it against any external source.
-- Notify us promptly at `noname@gmail.com` if you suspect unauthorized use
-  of your account.
+- Notify us promptly at `anjas.adi.nugroho29@gmail.com` if you suspect
+  unauthorized use of your account.
 
 ## 4. Use of the Service
 
@@ -92,10 +92,11 @@ Gemini API solely to provide the feature to you.
 ## 8. Termination
 
 You may stop using SpendWise and delete your account at any time from within
-the App or by emailing `noname@gmail.com`. We may suspend or terminate your
-account if you violate these Terms, or discontinue the App entirely,
-including without prior notice, on reasonable efforts to provide advance
-notice where practical.
+the App or by requesting deletion at
+[wallet.birchlabs.tech/account-delete-request](https://wallet.birchlabs.tech/account-delete-request) —
+no need to email us. We may suspend or terminate your account if you violate
+these Terms, or discontinue the App entirely, including without prior
+notice, on reasonable efforts to provide advance notice where practical.
 
 ## 9. Disclaimer and Limitation of Liability
 
@@ -130,4 +131,4 @@ the updated Terms.
 
 ## 12. Contact Us
 
-Questions about these Terms can be sent to: `noname@gmail.com`.
+Questions about these Terms can be sent to: `anjas.adi.nugroho29@gmail.com`.
