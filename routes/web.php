@@ -74,6 +74,7 @@ $renderDoc = function (string $file, string $title) {
 // Legal pages.
 Route::get('/terms-conditions', fn () => $renderDoc('terms-conditions.md', 'Terms & Conditions'))->name('terms-conditions');
 Route::get('/privacy-policy', fn () => $renderDoc('privacy-policy.md', 'Privacy Policy'))->name('privacy-policy');
+Route::get('/privacy-policy-v2', fn () => $renderDoc('privacy-policy-v2.md', 'Privacy Policy'))->name('privacy-policy-v2');
 
 /*
 | Documentation hub + Markdown guides. `/docs` is the landing page that links out to
