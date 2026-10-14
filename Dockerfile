@@ -10,11 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-WORKDIR /var/www
+# Same path the compose files use as working_dir. Local dev bind-mounts the source over it;
+# the VPS runs the baked-in code and only mounts .env and storage/.
+WORKDIR /var/www/html
 
-COPY . /var/www
+# Dependencies first so this layer stays cached until composer.lock changes.
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --prefer-dist --no-progress --no-dev --no-scripts --no-autoloader
 
-RUN composer install --no-interaction --prefer-dist --no-progress
+COPY . .
+
+RUN composer dump-autoload --optimize --no-dev \
+    && php artisan storage:link
 
 EXPOSE 8000
 

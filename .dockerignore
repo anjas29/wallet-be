@@ -9,3 +9,6 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+public/storage
+bootstrap/cache/*.php
+.github
